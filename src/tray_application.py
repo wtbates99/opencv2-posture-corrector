@@ -84,10 +84,32 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
 
+        # Replace the single "Change Webcam" action with a submenu
+        webcam_menu = QMenu("Change Webcam", menu)
+        webcam_group = QActionGroup(webcam_menu)
+        webcam_group.setExclusive(True)
+
+        available_cameras = Webcam.list_available_cameras()
+        for camera_id in available_cameras:
+            action = QAction(f"Camera {camera_id}", webcam_menu, checkable=True)
+            action.setData(camera_id)
+            action.triggered.connect(
+                lambda checked, cid=camera_id: self.switch_webcam(cid)
+            )
+            webcam_menu.addAction(action)
+            webcam_group.addAction(action)
+            if camera_id == self.frame_reader.camera_id:
+                action.setChecked(True)
+
+        # Create database toggle action
         self.toggle_db_action = QAction("Enable Database Logging", menu, checkable=True)
-        self.toggle_db_action.setChecked(False)
+        self.toggle_db_action.setChecked(self.db_enabled)
         self.toggle_db_action.triggered.connect(self.toggle_database)
 
+        # Add the webcam submenu to the main menu
+        menu.addMenu(webcam_menu)
+
+        # Add database toggle and quit actions
         menu.addAction(self.toggle_db_action)
         menu.addSeparator()
         menu.addAction(
@@ -96,6 +118,19 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.setContextMenu(menu)
         self.setVisible(True)
+
+    def switch_webcam(self, camera_id):
+        """Switch to the selected webcam"""
+        if self.frame_reader.camera_id == camera_id:
+            return
+
+        if self.tracking_enabled:
+            self.toggle_tracking()
+
+        self.frame_reader = Webcam(camera_id=camera_id)
+
+        if self.tracking_enabled:
+            self.toggle_tracking()
 
     def create_score_icon(self, score):
         img = np.zeros((64, 64, 4), dtype=np.uint8)

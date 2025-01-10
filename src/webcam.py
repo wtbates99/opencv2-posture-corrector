@@ -1,3 +1,4 @@
+import threading
 import time
 from threading import Event, Thread
 
@@ -36,11 +37,12 @@ class Webcam:
     def stop(self):
         """Stop the camera capture"""
         self.is_running.clear()
-        if self.thread:
-            self.thread.join()  # Wait for thread to finish
         if self.cap:
             self.cap.release()
         self.cap = None
+        # Only try to join the thread if it's not the current thread
+        if self.thread and self.thread != threading.current_thread():
+            self.thread.join()  # Wait for thread to finish
         self.thread = None
 
     def _capture_loop(self):
@@ -73,6 +75,17 @@ class Webcam:
             processing_time = time.time() - start_time
             if processing_time < self.frame_time:
                 time.sleep(self.frame_time - processing_time)
+
+    @staticmethod
+    def list_available_cameras(max_tests=3):
+        """List all available cameras by testing indices up to max_tests"""
+        available_cameras = []
+        for i in range(max_tests):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                available_cameras.append(i)
+                cap.release()
+        return available_cameras
 
     def get_latest_frame(self):
         """Get the most recent frame and score"""
