@@ -1,13 +1,15 @@
-import threading
-import time
-from threading import Event, Thread
-
+import platform
+import os
 import cv2
+import time
+import threading
+from threading import Event, Thread
 
 
 class Webcam:
-    def __init__(self, camera_id=0, fps=30):
+    def __init__(self, camera_id=0, backend=None, fps=30):
         self.camera_id = camera_id
+        self.backend = backend
         self.cap = None
         self.is_running = Event()
         self.thread = None
@@ -19,11 +21,15 @@ class Webcam:
         self._latest_pose_results = None
 
     def start(self, callback=None):
-        """Start the camera capture with optional callback for frame processing"""
+        """Start the camera capture with the specified backend."""
         if self.is_running.is_set():
             return False
 
-        self.cap = cv2.VideoCapture(self.camera_id)
+        if self.backend is not None:
+            self.cap = cv2.VideoCapture(self.camera_id, self.backend)
+        else:
+            self.cap = cv2.VideoCapture(self.camera_id)
+
         if not self.cap.isOpened():
             return False
 
@@ -77,14 +83,36 @@ class Webcam:
                 time.sleep(self.frame_time - processing_time)
 
     @staticmethod
-    def list_available_cameras(max_tests=3):
-        """List all available cameras by testing indices up to max_tests"""
+    def list_available_cameras(max_tests=10):
+        """List cameras with OS-specific backends and names."""
         available_cameras = []
-        for i in range(max_tests):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                available_cameras.append(i)
+        for index in range(max_tests):
+            backend = None
+            if platform.system() == "Windows":
+                backend = cv2.CAP_DSHOW
+            elif platform.system() == "Darwin":
+                backend = cv2.CAP_AVFOUNDATION
+
+            cap = (
+                cv2.VideoCapture(index, backend) if backend else cv2.VideoCapture(index)
+            )
+            if not cap.isOpened():
                 cap.release()
+                continue
+
+            device_name = f"Camera {index}"
+            os_name = platform.system()
+            if os_name == "Linux":
+                sysfs_path = f"/sys/class/video4linux/video{index}/name"
+                if os.path.exists(sysfs_path):
+                    with open(sysfs_path, "r") as f:
+                        device_name = f.read().strip()
+            # For Windows and macOS, just use the index-based name since
+            # CAP_PROP_DEVICE_DESCRIPTION isn't consistently available
+
+            cap.release()
+            available_cameras.append((index, device_name, backend))
+
         return available_cameras
 
     def get_latest_frame(self):

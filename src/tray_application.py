@@ -97,21 +97,24 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
 
-        # Replace the single "Change Webcam" action with a submenu
         webcam_menu = QMenu("Change Webcam", menu)
         webcam_group = QActionGroup(webcam_menu)
         webcam_group.setExclusive(True)
 
         available_cameras = Webcam.list_available_cameras()
-        for camera_id in available_cameras:
-            action = QAction(f"Camera {camera_id}", webcam_menu, checkable=True)
-            action.setData(camera_id)
+        for camera_id, camera_name, backend in available_cameras:
+            action = QAction(camera_name, webcam_menu, checkable=True)
+            action.setData((camera_id, backend))
             action.triggered.connect(
-                lambda checked, cid=camera_id: self.switch_webcam(cid)
+                lambda checked, cid=camera_id, be=backend: self.switch_webcam(cid, be)
             )
             webcam_menu.addAction(action)
             webcam_group.addAction(action)
-            if camera_id == self.frame_reader.camera_id:
+            # Check if current camera matches
+            if (
+                camera_id == self.frame_reader.camera_id
+                and backend == self.frame_reader.backend
+            ):
                 action.setChecked(True)
 
         # Create database toggle action
@@ -132,18 +135,23 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.setContextMenu(menu)
         self.setVisible(True)
 
-    def switch_webcam(self, camera_id):
-        """Switch to the selected webcam"""
-        if self.frame_reader.camera_id == camera_id:
+    def switch_webcam(self, camera_id, backend):
+        """Switch to the selected webcam using the specified backend."""
+        if (
+            self.frame_reader.camera_id == camera_id
+            and self.frame_reader.backend == backend
+        ):
             return
 
-        if self.tracking_enabled:
-            self.toggle_tracking()
+        was_tracking = self.tracking_enabled
+        if was_tracking:
+            self.toggle_tracking()  # Stop tracking
 
-        self.frame_reader = Webcam(camera_id=camera_id)
+        # Reinitialize with new camera ID and backend
+        self.frame_reader = Webcam(camera_id=camera_id, backend=backend)
 
-        if self.tracking_enabled:
-            self.toggle_tracking()
+        if was_tracking:
+            self.toggle_tracking()  # Restart tracking
 
     def create_score_icon(self, score):
         img = np.zeros((64, 64, 4), dtype=np.uint8)
