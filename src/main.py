@@ -15,7 +15,7 @@ def kill_existing_instance(lock_file):
 
         try:
             process = psutil.Process(old_pid)
-            if "python" in process.name().lower():  # Verify it's a Python process
+            if "python" in process.name().lower():
                 process.terminate()
                 process.wait(timeout=3)  # Wait for process to terminate
         except (psutil.NoSuchProcess, psutil.TimeoutExpired):
@@ -24,7 +24,6 @@ def kill_existing_instance(lock_file):
     except (FileNotFoundError, ValueError):
         pass
 
-    # Remove stale lock file
     if os.path.exists(lock_file):
         os.remove(lock_file)
 

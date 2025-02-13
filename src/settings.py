@@ -1,48 +1,35 @@
 import json
 import os
 
-# Path where user-customizable settings are saved/restored.
 USER_SETTINGS_FILE = "user_settings.json"
 
-# ---------------------------
-# Immutable settings - these cannot be changed through the UI.
-# ---------------------------
 IMMUTABLE_SETTINGS = {
     "ICON_PATH": "icon.png",
     "DEFAULT_DB_NAME": "posture_data.db",
-    # Core algorithm weights and thresholds that shouldn't be modified
     "POSTURE_WEIGHTS": [0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05],
     "POSTURE_THRESHOLDS": {
-        "head_tilt": 1.2,  # head forward threshold
-        "neck_angle": 45.0,  # max neck angle
-        "shoulder_level": 5.0,  # shoulder level threshold
-        "shoulder_roll": 2.0,  # shoulder roll threshold
-        "spine_angle": 45.0,  # max spine angle
+        "head_tilt": 1.2,
+        "neck_angle": 45.0,
+        "shoulder_level": 5.0,
+        "shoulder_roll": 2.0,
+        "spine_angle": 45.0,
     },
 }
 
-# ---------------------------
-# Customizable settings - these can be modified by the user.
-# ---------------------------
 CUSTOMIZABLE_SETTINGS = {
-    # Camera settings
     "DEFAULT_CAMERA_ID": 0,
     "DEFAULT_FPS": 30,
-    # Pose detection settings
     "MIN_DETECTION_CONFIDENCE": 0.5,
     "MIN_TRACKING_CONFIDENCE": 0.5,
     "FRAME_WIDTH": 1280,
     "FRAME_HEIGHT": 720,
     "MODEL_COMPLEXITY": 1,
-    # Score history settings
     "SCORE_BUFFER_SIZE": 1000,
     "SCORE_WINDOW_SIZE": 5,
     "SCORE_THRESHOLD": 65,
-    # Notification settings
-    "NOTIFICATION_COOLDOWN": 300,  # 5 minutes
+    "NOTIFICATION_COOLDOWN": 300,
     "POOR_POSTURE_THRESHOLD": 60,
     "DEFAULT_POSTURE_MESSAGE": "Please sit up straight!",
-    # Tracking intervals
     "TRACKING_INTERVALS": {
         "Continuous": 0,
         "Every 15 minutes": 15,
@@ -94,7 +81,4 @@ def update_setting(key, value):
         raise KeyError(f"Unknown setting: {key}")
 
 
-# Load user settings on module import
 load_user_settings()
-
-# Remove all the individual settings variables since they're now in the dictionaries

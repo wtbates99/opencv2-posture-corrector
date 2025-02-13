@@ -27,20 +27,15 @@ class PoseDetector:
         )
         self.posture_landmarks = POSTURE_LANDMARKS
 
-        # Pre-calculate the ideal vectors once
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
 
-        # Pre-calculate constants for performance
         self.weights = np.array(get_setting("POSTURE_WEIGHTS"))
         self.score_thresholds = get_setting("POSTURE_THRESHOLDS")
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, any]:
-        # Resize frame to a consistent size for better performance
-        # Height of 720p maintains good detail while being computationally efficient
         frame = cv2.resize(frame, (1280, 720))
 
-        # Apply adaptive histogram equalization to improve contrast in different lighting
         lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
         l_channel, a_channel, b_channel = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
@@ -48,7 +43,6 @@ class PoseDetector:
         enhanced = cv2.merge([l_channel, a_channel, b_channel])
         enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        # Convert to RGB for MediaPipe
         rgb_frame = cv2.cvtColor(enhanced, cv2.COLOR_BGR2RGB)
 
         results = self.pose.process(rgb_frame)
@@ -120,11 +114,9 @@ class PoseDetector:
         norm_v1 = np.linalg.norm(v1)
         norm_v2 = np.linalg.norm(v2)
 
-        # Avoid division by zero
         if norm_v1 < 1e-6 or norm_v2 < 1e-6:
             return 0.0
 
-        # Normalize vectors and calculate dot product
         v1_norm = v1 / norm_v1
         v2_norm = v2 / norm_v2
         dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
@@ -132,10 +124,8 @@ class PoseDetector:
         return np.degrees(np.arccos(dot_product))
 
     def _calculate_posture_score(self, landmarks) -> float:
-        # Vectorized point extraction - more efficient than individual access
         landmark_points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
 
-        # Get all relevant points in one go using array indexing
         nose = landmark_points[self.mp_pose.PoseLandmark.NOSE]
         ears = landmark_points[
             [self.mp_pose.PoseLandmark.LEFT_EAR, self.mp_pose.PoseLandmark.RIGHT_EAR]
@@ -150,12 +140,10 @@ class PoseDetector:
             [self.mp_pose.PoseLandmark.LEFT_HIP, self.mp_pose.PoseLandmark.RIGHT_HIP]
         ]
 
-        # Efficient midpoint calculations using numpy operations
         mid_ear = np.mean(ears, axis=0)
         mid_shoulder = np.mean(shoulders, axis=0)
         mid_hip = np.mean(hips, axis=0)
 
-        # Vectorized score calculations
         head_forward_offset = nose[2] - mid_ear[2]
         head_tilt_score = np.clip(
             1 - abs(head_forward_offset) * self.score_thresholds["head_tilt"], 0, 1
@@ -167,20 +155,19 @@ class PoseDetector:
             1 - abs(neck_angle) / self.score_thresholds["neck_angle"], 0, 1
         )
 
-        # Efficient shoulder calculations
-        shoulder_diff = shoulders[0] - shoulders[1]  # left - right
+        shoulder_diff = shoulders[0] - shoulders[1]
         shoulder_scores = np.array(
             [
                 np.clip(
                     1 - abs(shoulder_diff[1]) * self.score_thresholds["shoulder_level"],
                     0,
                     1,
-                ),  # level
+                ),
                 np.clip(
                     1 - abs(shoulder_diff[2]) * self.score_thresholds["shoulder_roll"],
                     0,
                     1,
-                ),  # roll
+                ),
             ]
         )
 
@@ -190,8 +177,7 @@ class PoseDetector:
             1 - abs(spine_angle) / self.score_thresholds["spine_angle"], 0, 1
         )
 
-        # Efficient head rotation calculation
-        ear_distance = np.linalg.norm(ears[1] - ears[0])  # right - left
+        ear_distance = np.linalg.norm(ears[1] - ears[0])
         shoulder_width = np.linalg.norm(shoulders[1] - shoulders[0])
         ideal_ear_distance = shoulder_width * 0.7
 
@@ -203,7 +189,6 @@ class PoseDetector:
 
         head_side_tilt_score = np.clip(1 - abs(ears[0][1] - ears[1][1]) * 5, 0, 1)
 
-        # Vectorized final score calculation
         scores = np.array(
             [
                 head_tilt_score,

@@ -20,14 +20,13 @@ class NotificationManager:
 
     def check_and_notify(self, posture_score):
         current_time = time.time()
-        # only apply cooldown to posture notifications
         if posture_score < self.poor_posture_threshold:
             if current_time - self.last_notification_time > self.notification_cooldown:
                 self.send_notification(self.posture_message, "Posture Alert!")
                 self.last_notification_time = current_time
 
     def send_notification(self, message, title):
-        if platform.system() == "Darwin":  # macOS
+        if platform.system() == "Darwin":
             os.system(
                 """
                 osascript -e 'display notification "{}" with title "{}"'
@@ -57,13 +56,12 @@ if __name__ == "__main__":
     time.sleep(1)
     notifier.set_interval_message("Checking posture every 1 minute")
 
-    notifier.check_and_notify(50)  # Should trigger notification
+    notifier.check_and_notify(50)
 
-    notifier.check_and_notify(50)  # Should not trigger (cooldown period)
-
+    notifier.check_and_notify(50)
     notifier.set_interval_message("Checking posture every 10 minutes")
 
     print("\nWaiting 5 seconds...")
     time.sleep(5)
     print("This posture alert should appear (after cooldown):")
-    notifier.check_and_notify(50)  # Should trigger (cooldown expired)
+    notifier.check_and_notify(50)

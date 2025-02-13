@@ -400,4 +400,3 @@ class PostureTrackerTray(QSystemTrayIcon):
         dialog = SettingsDialog()
         if dialog.exec() == QDialog.DialogCode.Accepted:
             print("Settings updated.")
-            # If any of the settings should trigger an immediate app update, do so here.
