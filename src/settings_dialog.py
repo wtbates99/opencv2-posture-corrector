@@ -23,7 +23,8 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Customizable Settings")
-        self.resize(500, 400)
+        self.resize(800, 600)
+        self.setMinimumSize(600, 400)
         self.tabs = QTabWidget()
 
         # Create tabs
@@ -52,9 +53,16 @@ class SettingsDialog(QDialog):
         self.setLayout(main_layout)
 
     def init_camera_tab(self):
-        layout = QFormLayout()
-        # Default Camera selection using QComboBox with available cameras.
+        layout = QVBoxLayout()
+        form_layout = QFormLayout()
+        
+        # Add spacing
+        form_layout.setSpacing(10)
+        form_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Make input fields wider
         self.camera_combo = QComboBox()
+        self.camera_combo.setMinimumWidth(200)
         cameras = self.get_available_cameras()
         if cameras:
             for cam_id, cam_name in cameras:
@@ -66,98 +74,128 @@ class SettingsDialog(QDialog):
         else:
             self.camera_combo.addItem("No Camera Found", -1)
             self.camera_combo.setEnabled(False)
-        layout.addRow("Default Camera:", self.camera_combo)
+        form_layout.addRow("Default Camera:", self.camera_combo)
 
-        # Frames Per Second setting
+        # Increase spinbox widths and ranges
         self.fps_spinbox = QSpinBox()
+        self.fps_spinbox.setMinimumWidth(200)
         self.fps_spinbox.setRange(1, 120)
         self.fps_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("DEFAULT_FPS", 30))
-        layout.addRow("Frames Per Second:", self.fps_spinbox)
+        form_layout.addRow("Frames Per Second:", self.fps_spinbox)
 
-        # Frame width setting
         self.width_spinbox = QSpinBox()
+        self.width_spinbox.setMinimumWidth(200)
         self.width_spinbox.setRange(100, 10000)
         self.width_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("FRAME_WIDTH", 1280))
-        layout.addRow("Frame Width:", self.width_spinbox)
+        form_layout.addRow("Frame Width:", self.width_spinbox)
 
-        # Frame height setting
         self.height_spinbox = QSpinBox()
+        self.height_spinbox.setMinimumWidth(200)
         self.height_spinbox.setRange(100, 10000)
         self.height_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("FRAME_HEIGHT", 720))
-        layout.addRow("Frame Height:", self.height_spinbox)
+        form_layout.addRow("Frame Height:", self.height_spinbox)
 
-        # Model complexity setting
         self.model_complexity_spinbox = QSpinBox()
+        self.model_complexity_spinbox.setMinimumWidth(200)
         self.model_complexity_spinbox.setRange(0, 2)
         self.model_complexity_spinbox.setValue(
             CUSTOMIZABLE_SETTINGS.get("MODEL_COMPLEXITY", 1)
         )
-        layout.addRow("Model Complexity:", self.model_complexity_spinbox)
+        form_layout.addRow("Model Complexity:", self.model_complexity_spinbox)
 
+        layout.addLayout(form_layout)
+        layout.addStretch()
         self.camera_tab.setLayout(layout)
 
     def init_general_tab(self):
-        layout = QFormLayout()
+        layout = QVBoxLayout()
+        form_layout = QFormLayout()
+        
+        # Add spacing
+        form_layout.setSpacing(10)
+        form_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Notification Cooldown setting
+        # Make input fields wider
         self.cooldown_spinbox = QSpinBox()
+        self.cooldown_spinbox.setMinimumWidth(200)
         self.cooldown_spinbox.setRange(1, 3600)
         self.cooldown_spinbox.setValue(
             CUSTOMIZABLE_SETTINGS.get("NOTIFICATION_COOLDOWN", 300)
         )
-        layout.addRow("Notification Cooldown (sec):", self.cooldown_spinbox)
+        form_layout.addRow("Notification Cooldown (sec):", self.cooldown_spinbox)
 
-        # Poor Posture Threshold setting
         self.poor_posture_spinbox = QSpinBox()
+        self.poor_posture_spinbox.setMinimumWidth(200)
         self.poor_posture_spinbox.setRange(1, 100)
         self.poor_posture_spinbox.setValue(
             CUSTOMIZABLE_SETTINGS.get("POOR_POSTURE_THRESHOLD", 60)
         )
-        layout.addRow("Poor Posture Threshold:", self.poor_posture_spinbox)
+        form_layout.addRow("Poor Posture Threshold:", self.poor_posture_spinbox)
 
-        # Default Posture Message setting
         self.posture_message_lineedit = QLineEdit()
+        self.posture_message_lineedit.setMinimumWidth(300)
         self.posture_message_lineedit.setText(
             CUSTOMIZABLE_SETTINGS.get(
                 "DEFAULT_POSTURE_MESSAGE", "Please sit up straight!"
             )
         )
-        layout.addRow("Posture Message:", self.posture_message_lineedit)
+        form_layout.addRow("Posture Message:", self.posture_message_lineedit)
 
+        layout.addLayout(form_layout)
+        layout.addStretch()
         self.general_tab.setLayout(layout)
 
     def init_tracking_tab(self):
         main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Table to display/edit tracking intervals.
+        # Improve table appearance
         self.tracking_table = QTableWidget()
         self.tracking_table.setColumnCount(2)
         self.tracking_table.setHorizontalHeaderLabels(["Label", "Minutes"])
         self.tracking_table.horizontalHeader().setStretchLastSection(True)
+        self.tracking_table.setMinimumHeight(200)
+        self.tracking_table.setAlternatingRowColors(True)
+        self.tracking_table.verticalHeader().setVisible(False)
+        
+        # Populate the table with existing intervals
         self.populate_tracking_table()
-
-        main_layout.addWidget(QLabel("Tracking Intervals (Label : Minutes):"))
-        main_layout.addWidget(self.tracking_table)
-
-        # Controls to add a new tracking interval.
+        
+        # Add controls with better spacing
         add_layout = QHBoxLayout()
+        add_layout.setSpacing(10)
+        
         self.new_interval_label_edit = QLineEdit()
+        self.new_interval_label_edit.setMinimumWidth(200)
         self.new_interval_label_edit.setPlaceholderText("Interval Label")
+        
         self.new_interval_spinbox = QSpinBox()
+        self.new_interval_spinbox.setMinimumWidth(100)
         self.new_interval_spinbox.setRange(0, 1440)
         self.new_interval_spinbox.setValue(15)
+
         self.add_interval_button = QPushButton("Add Interval")
+        self.add_interval_button.setMinimumWidth(100)
         self.add_interval_button.clicked.connect(self.add_tracking_interval)
+
+        # Layout improvements
+        main_layout.addWidget(QLabel("Tracking Intervals (Label : Minutes):"))
+        main_layout.addWidget(self.tracking_table)
+        
         add_layout.addWidget(self.new_interval_label_edit)
         add_layout.addWidget(self.new_interval_spinbox)
         add_layout.addWidget(self.add_interval_button)
+        add_layout.addStretch()
+        
         main_layout.addLayout(add_layout)
-
-        # Button to remove the selected tracking interval.
+        
         self.remove_interval_button = QPushButton("Remove Selected Interval")
+        self.remove_interval_button.setMinimumWidth(150)
         self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
         main_layout.addWidget(self.remove_interval_button)
-
+        main_layout.addStretch()
+        
         self.tracking_tab.setLayout(main_layout)
 
     def populate_tracking_table(self):
@@ -192,7 +230,19 @@ class SettingsDialog(QDialog):
         for i in range(max_index):
             cap = cv2.VideoCapture(i)
             if cap.isOpened():
-                available.append((i, f"Camera {i}"))
+                # Try to get camera name/description
+                name = "Unknown Camera"
+                try:
+                    # Get camera backend
+                    backend = cap.getBackendName()
+                    # Get camera properties
+                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    name = f"{backend} Camera ({width}x{height})"
+                except:
+                    name = f"Camera {i}"
+                    
+                available.append((i, name))
             cap.release()
         return available
 
@@ -229,7 +279,7 @@ class SettingsDialog(QDialog):
                 try:
                     minutes = int(minutes_item.text())
                 except ValueError:
-                    minutes = 0
+                    minutes = 1
                 intervals[label] = minutes
         CUSTOMIZABLE_SETTINGS["TRACKING_INTERVALS"] = intervals
 
