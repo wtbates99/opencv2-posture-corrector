@@ -27,6 +27,9 @@ class NotificationManager:
                 self.last_notification_time = current_time
 
     def send_notification(self, message, title):
+        # Get icon path from settings
+        icon_path = get_setting("ICON_PATH")
+
         if platform.system() == "Darwin":  # macOS
             os.system(
                 """
@@ -36,13 +39,13 @@ class NotificationManager:
                 )
             )
         elif platform.system() == "Linux":
-            os.system(f'notify-send "{title}" "{message}"')
+            os.system(f'notify-send "{title}" "{message}" -i "{icon_path}"')
         else:
             from plyer import notification
 
             notification.notify(
                 title=title,
                 message=message,
-                app_icon=None,
+                app_icon=icon_path,
                 timeout=10,
             )
