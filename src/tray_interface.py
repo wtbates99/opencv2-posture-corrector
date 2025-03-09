@@ -66,9 +66,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.toggle_video_action.triggered.connect(self.toggle_video)
         self.toggle_video_action.setEnabled(False)
 
-        interval_menu = self._create_interval_menu(menu)
+        # Store the interval menu and its action as instance variables
+        self.interval_menu = self._create_interval_menu(menu)
+        self.interval_menu_action = menu.addMenu(self.interval_menu)
 
-        menu.addMenu(interval_menu)
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
 
@@ -262,12 +263,14 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.start_interval_tracking()
 
     def start_interval_tracking(self):
-        """Start tracking for a fixed interval (15 minutes)."""
         self.last_tracking_time = datetime.now()
         self.last_db_save = None
         if not self.tracking_enabled:
             self.toggle_tracking()
-        QTimer.singleShot(900000, self.stop_interval_tracking)
+        tracking_duration_minutes = get_setting("TRACKING_DURATION_MINUTES")
+        QTimer.singleShot(
+            tracking_duration_minutes * 60 * 1000, self.stop_interval_tracking
+        )
 
     def stop_interval_tracking(self):
         """Stop tracking after the interval ends."""
@@ -282,6 +285,8 @@ class PostureTrackerTray(QSystemTrayIcon):
     def reload_settings(self):
         """Reload settings and reinitialize components."""
         was_tracking = self.tracking_enabled
+        previous_interval = self.tracking_interval
+
         if was_tracking:
             self.toggle_tracking()
 
@@ -289,8 +294,25 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
         self.last_db_save = None if self.db_enabled else self.last_db_save
 
+        menu = self.contextMenu()
+        if menu:
+            menu.removeAction(self.interval_menu_action)
+            self.interval_menu = self._create_interval_menu(menu)
+            self.interval_menu_action = menu.insertMenu(
+                self.toggle_tracking_action, self.interval_menu
+            )
+
         if was_tracking:
             self.toggle_tracking()
+
+        if (
+            was_tracking
+            and previous_interval != self.tracking_interval
+            and self.tracking_interval > 0
+        ):
+            self.notifier.set_interval_message(
+                f"Checking posture every {self.tracking_interval} minutes"
+            )
 
     def on_video_window_closed(self):
         """Handle video window closure."""

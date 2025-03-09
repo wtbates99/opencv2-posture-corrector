@@ -145,7 +145,7 @@ class SettingsInterface(QDialog):
     def init_tracking_tab(self):
         main_layout = QVBoxLayout()
 
-        # Table to display/edit tracking intervals.
+        # Table to display/edit tracking intervals
         self.tracking_table = QTableWidget()
         self.tracking_table.setColumnCount(2)
         self.tracking_table.setHorizontalHeaderLabels(["Label", "Minutes"])
@@ -155,7 +155,19 @@ class SettingsInterface(QDialog):
         main_layout.addWidget(QLabel("Tracking Intervals (Label : Minutes):"))
         main_layout.addWidget(self.tracking_table)
 
-        # Controls to add a new tracking interval.
+        # Add tracking duration setting
+        duration_layout = QHBoxLayout()
+        duration_label = QLabel("Tracking Duration (minutes):")
+        self.tracking_duration_spinbox = QSpinBox()
+        self.tracking_duration_spinbox.setRange(1, 60)  # 1 to 60 minutes
+        self.tracking_duration_spinbox.setValue(
+            CUSTOMIZABLE_SETTINGS.get("TRACKING_DURATION_MINUTES", 1)
+        )
+        duration_layout.addWidget(duration_label)
+        duration_layout.addWidget(self.tracking_duration_spinbox)
+        main_layout.addLayout(duration_layout)
+
+        # Controls to add a new tracking interval
         add_layout = QHBoxLayout()
         self.new_interval_label_edit = QLineEdit()
         self.new_interval_label_edit.setPlaceholderText("Interval Label")
@@ -169,7 +181,7 @@ class SettingsInterface(QDialog):
         add_layout.addWidget(self.add_interval_button)
         main_layout.addLayout(add_layout)
 
-        # Button to remove the selected tracking interval.
+        # Button to remove the selected tracking interval
         self.remove_interval_button = QPushButton("Remove Selected Interval")
         self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
         main_layout.addWidget(self.remove_interval_button)
@@ -256,6 +268,9 @@ class SettingsInterface(QDialog):
                     minutes = 0
                 intervals[label] = minutes
         CUSTOMIZABLE_SETTINGS["TRACKING_INTERVALS"] = intervals
+        CUSTOMIZABLE_SETTINGS[
+            "TRACKING_DURATION_MINUTES"
+        ] = self.tracking_duration_spinbox.value()
 
         save_user_settings()
         super().accept()

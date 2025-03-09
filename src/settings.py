@@ -47,6 +47,7 @@ CUSTOMIZABLE_SETTINGS = {
         "Every 30 minutes": 30,
         "Every hour": 60,
     },
+    "TRACKING_DURATION_MINUTES": 15,
     "ENABLE_DATABASE_LOGGING": False,
     "DB_WRITE_INTERVAL_SECONDS": 900,
 }
