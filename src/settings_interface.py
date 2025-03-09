@@ -20,7 +20,7 @@ import cv2
 from settings import CUSTOMIZABLE_SETTINGS, save_user_settings
 
 
-class SettingsDialog(QDialog):
+class SettingsInterface(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Customizable Settings")

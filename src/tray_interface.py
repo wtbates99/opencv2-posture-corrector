@@ -18,8 +18,8 @@ from pose_detector import PoseDetector
 from score_history import ScoreHistory
 from webcam import Webcam
 from settings import get_setting
-from settings_dialog import SettingsDialog
-import utils.create_score_icon
+from settings_interface import SettingsInterface
+from util__create_score_icon import create_score_icon
 
 import signal
 
@@ -108,7 +108,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking_action.setText("Stop Tracking")
             self.toggle_video_action.setEnabled(True)
 
-            self.setIcon(utils.create_score_icon(0))
+            self.setIcon(create_score_icon(0))
 
             if self.tracking_interval > 0:
                 self.notifier.set_interval_message(
@@ -151,47 +151,59 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window.show()
 
     def update_tracking(self):
-        if self.tracking_enabled:
-            frame, score = self.frame_reader.get_latest_frame()
-            if frame is not None:
-                self.scores.add_score(score)
-                average_score = self.scores.get_average_score()
+        if not self.tracking_enabled:
+            return
 
-                self.setIcon(utils.create_score_icon(average_score))
+        frame, score = self.frame_reader.get_latest_frame()
+        if frame is None:
+            return
 
-                if self.db_enabled:
-                    current_time = datetime.now()
-                    db_interval_seconds = get_setting(
-                        "DB_WRITE_INTERVAL_SECONDS", 900
-                    )  # Default to 15 minutes if not set
+        # Update scores and get average
+        self.scores.add_score(score)
+        average_score = self.scores.get_average_score()
 
-                    if (
-                        self.tracking_interval > 0
-                        and self.last_tracking_time is not None
-                        and self.last_db_save is None
-                        and (current_time - self.last_tracking_time).total_seconds()
-                        <= db_interval_seconds
-                    ):
-                        self._save_to_db(average_score)
+        # Update tray icon
+        self.setIcon(create_score_icon(average_score))
 
-                    elif self.tracking_interval == 0 and (
-                        self.last_db_save is None
-                        or (current_time - self.last_db_save).total_seconds()
-                        >= db_interval_seconds
-                    ):
-                        self._save_to_db(average_score)
+        # Handle database logging if enabled
+        if self.db_enabled:
+            self._save_to_db(average_score)
 
-                self.notifier.check_and_notify(average_score)
+        # Check for notifications
+        self.notifier.check_and_notify(average_score)
 
-                if self.video_window:
-                    self.show_video_in_pyqt(frame)
+        # Update video window if open
+        if self.video_window:
+            self.show_video_in_pyqt(frame)
 
     def _save_to_db(self, average_score):
-        """Helper method to save pose data to database"""
-        results = self.frame_reader.get_latest_pose_results()
-        if results and results.pose_landmarks:
-            self.db.save_pose_data(results.pose_landmarks, average_score)
-            self.last_db_save = datetime.now()
+        """Save pose data to database based on tracking interval and timing conditions"""
+        current_time = datetime.now()
+        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_SECONDS")
+
+        should_save = False
+
+        if self.tracking_interval > 0:
+            # Interval tracking mode - save once at the beginning of each interval
+            should_save = (
+                self.last_tracking_time is not None
+                and self.last_db_save is None
+                and (current_time - self.last_tracking_time).total_seconds()
+                <= db_interval_seconds
+            )
+        else:
+            # Continuous tracking mode - save at regular intervals
+            should_save = (
+                self.last_db_save is None
+                or (current_time - self.last_db_save).total_seconds()
+                >= db_interval_seconds
+            )
+
+        if should_save:
+            results = self.frame_reader.get_latest_pose_results()
+            if results and results.pose_landmarks:
+                self.db.save_pose_data(results.pose_landmarks, average_score)
+                self.last_db_save = datetime.now()
 
     def quit_application(self):
         """Clean up application resources and quit"""
@@ -318,7 +330,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.video_window.show()
 
     def open_settings(self):
-        dialog = SettingsDialog()
+        dialog = SettingsInterface()
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload_settings()
 
