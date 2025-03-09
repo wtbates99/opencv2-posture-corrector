@@ -136,7 +136,7 @@ class SettingsInterface(QDialog):
         self.db_write_interval_spinbox = QSpinBox()
         self.db_write_interval_spinbox.setRange(1, 3600)
         self.db_write_interval_spinbox.setValue(
-            CUSTOMIZABLE_SETTINGS.get("DB_WRITE_INTERVAL_SECONDS", 900)
+            CUSTOMIZABLE_SETTINGS.get("DB_WRITE_INTERVAL_MINUTES", 5) * 60
         )
         layout.addRow("Database Write Interval (sec):", self.db_write_interval_spinbox)
 

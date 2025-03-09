@@ -198,7 +198,7 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _save_to_db(self, average_score):
         """Save pose data to the database if conditions are met."""
         current_time = datetime.now()
-        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_SECONDS")
+        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_MINUTES") * 60
 
         should_save = (
             self.tracking_interval > 0

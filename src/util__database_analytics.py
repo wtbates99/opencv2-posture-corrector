@@ -76,6 +76,7 @@ def compute_angles(landmarks):
 def create_chart(series, title, y_label, y_min, y_max, series_color):
     chart = QChart()
     chart.setTitle(title)
+    chart.setTitleBrush(QBrush(QColor("#ffffff")))  # Set title color to white
     chart.addSeries(series)
     series.setPen(QPen(series_color, 2))
     series.setPointsVisible(True)
@@ -167,6 +168,9 @@ class MainWindow(QMainWindow):
         # Create posture score chart
         posture_chart = QChart()
         posture_chart.setTitle("Posture Score Over Time")
+        posture_chart.setTitleBrush(
+            QBrush(QColor("#ffffff"))
+        )  # Set title color to white
         posture_chart.addSeries(series)
         posture_chart.addSeries(trend_series)
         posture_chart.legend().setVisible(True)
