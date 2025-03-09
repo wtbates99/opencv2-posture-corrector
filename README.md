@@ -1,21 +1,21 @@
 # OpenCV2 Posture Corrector
 
-**Revolutionize Your Workspace Ergonomics with Real-Time Posture Monitoring**
+**Smart Posture Monitoring for Remote Workers**
 
-**OpenCV2 Posture Corrector** is a cutting-edge, real-time posture monitoring application designed to help you maintain optimal posture while working at your computer. Seamlessly integrated into your system tray, this application uses advanced computer vision to analyze your posture through your webcam, providing instant feedback and alerts to keep you ergonomically aligned.
+OpenCV2 Posture Corrector helps remote workers maintain better posture throughout the workday. Using computer vision through your webcam, it provides real-time feedback on your sitting position, helping prevent the back and neck strain that comes with long hours at the desk.
 
 ---
 
-## 🌟 Features
+## ✨ Features
 
-- **Real-Time Posture Scoring**: Get instant feedback with a posture score ranging from 0 to 100.
-- **System Tray Integration**: Minimalistic and unobtrusive, always available when you need it.
-- **Visual Feedback**: Color-coded score display for quick posture assessment.
-- **Customizable Tracking**: Adjust tracking intervals from continuous monitoring to 4-hour checks.
-- **Live Video Feed**: Optional video window to visualize posture analysis in real-time.
-- **Smart Notifications**: Receive automatic alerts when poor posture is detected.
-- **Cross-Platform**: Fully compatible with Windows, macOS, and Linux.
-- **Privacy First**: All processing is done locally—no data is ever stored or transmitted.
+- **Posture Scoring**: Simple 0-100 scale shows how you're doing
+- **System Tray Integration**: Runs quietly in the background
+- **Visual Indicators**: Color-coded feedback for quick assessment
+- **Flexible Monitoring**: Set tracking intervals that work for you
+- **Optional Video Feed**: See the tracking in action
+- **Timely Notifications**: Get alerts when posture correction is needed
+- **Cross-Platform**: Works on Windows, Mac, and Linux
+- **Privacy-Focused**: All processing happens locally on your device
 
 ---
 
@@ -23,20 +23,20 @@
 
 ### **Windows Installation**
 
-1. Ensure you have Python 3.10 installed.
+1. Requires Python 3.10
 2. Install dependencies:
    ```bash
    py -3.10 -m pip install -r requirements.txt
    ```
-3. Make sure you have the Visual C++ Redistributable installed.
-4. If issues persist, install the MSVC runtime:
+3. Visual C++ Redistributable required
+4. Troubleshooting:
    ```bash
    py -3.10 -m pip install msvc-runtime
    ```
 
 ### **Linux Installation**
 
-1. Install required dependencies:
+1. Required packages:
    ```bash
    sudo apt install -y \
        libxcb1 \
@@ -46,7 +46,7 @@
        libxcb-render0 \
        libxcb-render-util0
    ```
-2. For additional features, install optional packages:
+2. Optional packages:
    ```bash
    sudo apt install -y \
        qt6-base-dev \
@@ -60,36 +60,36 @@
    ```bash
    pip install -r requirements.txt
    ```
-2. Launch the application:
+2. Launch:
    ```bash
    python src/main.py
    ```
 
 ### 🎯 Basic Usage
 
-- **Start Monitoring**: Click the system tray icon and select "Start Tracking."
-- **Enable Video Feed**: Optionally enable the video window to see real-time posture analysis.
-- **Set Tracking Interval**: Choose your preferred monitoring frequency.
-- **Monitor Your Score**: Keep an eye on your posture score (0-100) via the tray icon.
-- **Receive Alerts**: Get notified when your posture needs correction.
+- **Start Monitoring**: Access via system tray icon
+- **View Feedback**: Optional video window shows posture analysis
+- **Adjust Settings**: Set monitoring frequency to suit your workflow
+- **Check Score**: System tray icon displays current posture rating
+- **Respond to Alerts**: Straighten up when notifications appear
 
 ---
 
-## 🔒 Privacy Commitment
+## 🔒 Privacy
 
-Your privacy is paramount. OpenCV2 Posture Corrector processes all video data locally on your machine. No video or posture data is ever stored, shared, or transmitted over the internet. Your data stays yours, always.
+All video processing occurs locally on your device. No data is stored, shared, or transmitted over the internet.
 
 ---
 
-## 📈 Future Roadmap
+## 📈 Future Development
 
-- **Posture History**: Track and visualize your posture trends over time.
-- **Advanced Analytics**: Gain insights into your ergonomic habits.
-- **Customizable Alerts**: Tailor notifications to your specific needs.
-- **Integration with Productivity Tools**: Sync with calendars and productivity apps for smarter reminders.
+- **Posture History**: Track improvements over time
+- **Usage Analytics**: Understand your posture patterns
+- **Custom Notifications**: Tailor alerts to your preferences
+- **Calendar Integration**: Smart monitoring based on your schedule
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please read our Contribution Guidelines to get started.
+Contributions welcome. See Contribution Guidelines for details.
