@@ -1,8 +1,6 @@
 from datetime import datetime, timedelta
-import os
 
 import cv2
-import numpy as np
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QActionGroup, QIcon, QImage, QPixmap
 from PyQt6.QtWidgets import (
@@ -21,6 +19,7 @@ from score_history import ScoreHistory
 from webcam import Webcam
 from settings import get_setting
 from settings_dialog import SettingsDialog
+import utils.create_score_icon
 
 import signal
 
@@ -29,23 +28,19 @@ class PostureTrackerTray(QSystemTrayIcon):
     def __init__(self):
         app = QApplication.instance()
         app.setApplicationName("Posture Corrector")
-        icon_path = os.path.join(os.path.dirname(__file__), get_setting("ICON_PATH"))
-        app.setWindowIcon(QIcon(icon_path))
+        self.icon_path = get_setting("ICON_PATH")
+        app.setWindowIcon(QIcon(self.icon_path))
 
         super().__init__()
 
-        self.default_icon_path = os.path.join(
-            os.path.dirname(__file__), get_setting("ICON_PATH")
-        )
-
-        self.setIcon(QIcon(self.default_icon_path))
+        self.setIcon(QIcon(self.icon_path))
 
         signal.signal(signal.SIGINT, self.signal_handler)
 
         self.frame_reader = Webcam()
         self.detector = PoseDetector()
         self.scores = ScoreHistory()
-        self.notifier = NotificationManager(icon_path=self.default_icon_path)
+        self.notifier = NotificationManager(icon_path=self.icon_path)
 
         self.tracking_enabled = False
         self.video_window = None
@@ -106,69 +101,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.setContextMenu(menu)
         self.setVisible(True)
 
-    def create_score_icon(self, score):
-        img = np.zeros((64, 64, 4), dtype=np.uint8)
-        img[:, :, 3] = 0
-
-        center = (32, 32)
-        radius = 30
-
-        for r in range(radius + 8, radius - 1, -1):
-            for y in range(64):
-                for x in range(64):
-                    dist = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2)
-                    if dist <= r:
-                        alpha = int(255 * (1 - dist / r) * (r - radius + 8) / (8))
-                        if r == radius:
-                            alpha = min(255, alpha * 1.5)
-                        img[y, x, 3] = max(img[y, x, 3], alpha)
-
-        hue = int(score * 60 / 100)
-        hue = min(60, max(0, hue))
-        rgb_color = cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0][0]
-        color = (int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2]), 255)
-        font = cv2.FONT_HERSHEY_DUPLEX
-        text = f"{int(score)}"
-        font_scale = 2.0 if len(text) == 1 else (1.5 if len(text) == 2 else 1.2)
-        thickness = 3
-        text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-        text_x = (64 - text_size[0]) // 2
-        text_y = (64 + text_size[1]) // 2
-        temp = img.copy()
-        shadow_offsets = [(2, 2), (1, 1)]
-        shadow_alphas = [120, 180]
-        for offset, alpha in zip(shadow_offsets, shadow_alphas):
-            shadow_color = (0, 0, 0, alpha)
-            cv2.putText(
-                temp,
-                text,
-                (text_x + offset[0], text_y + offset[1]),
-                font,
-                font_scale,
-                shadow_color,
-                thickness,
-            )
-
-        highlight_color = (255, 255, 255, 100)
-        cv2.putText(
-            temp,
-            text,
-            (text_x - 1, text_y - 1),
-            font,
-            font_scale,
-            highlight_color,
-            thickness,
-        )
-
-        cv2.putText(temp, text, (text_x, text_y), font, font_scale, color, thickness)
-
-        height, width, channel = temp.shape
-        bytes_per_line = 4 * width
-        q_img = QImage(
-            temp.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888
-        )
-        return QIcon(QPixmap.fromImage(q_img))
-
     def toggle_tracking(self):
         if not self.tracking_enabled:
             self.frame_reader.start(callback=self.detector.process_frame)
@@ -176,7 +108,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking_action.setText("Stop Tracking")
             self.toggle_video_action.setEnabled(True)
 
-            self.setIcon(self.create_score_icon(0))
+            self.setIcon(utils.create_score_icon(0))
 
             if self.tracking_interval > 0:
                 self.notifier.set_interval_message(
@@ -193,7 +125,7 @@ class PostureTrackerTray(QSystemTrayIcon):
                 cv2.destroyWindow("Posture Detection")
                 self.video_window = None
 
-            self.setIcon(QIcon(self.default_icon_path))
+            self.setIcon(QIcon(self.icon_path))
 
     def toggle_video(self):
         if self.video_window:
@@ -225,7 +157,7 @@ class PostureTrackerTray(QSystemTrayIcon):
                 self.scores.add_score(score)
                 average_score = self.scores.get_average_score()
 
-                self.setIcon(self.create_score_icon(average_score))
+                self.setIcon(utils.create_score_icon(average_score))
 
                 if self.db_enabled:
                     current_time = datetime.now()
