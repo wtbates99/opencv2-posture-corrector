@@ -240,13 +240,13 @@ class PostureTrackerTray(QSystemTrayIcon):
                         and self.last_tracking_time is not None
                         and self.last_db_save is None
                         and (current_time - self.last_tracking_time).total_seconds()
-                        <= 60
+                        <= 900
                     ):
                         self._save_to_db(average_score)
 
                     elif self.tracking_interval == 0 and (
                         self.last_db_save is None
-                        or (current_time - self.last_db_save).total_seconds() >= 60
+                        or (current_time - self.last_db_save).total_seconds() >= 900
                     ):
                         self._save_to_db(average_score)
 
