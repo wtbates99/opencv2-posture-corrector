@@ -24,7 +24,7 @@ class SettingsInterface(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Customizable Settings")
-        self.resize(500, 400)
+        self.resize(600, 500)  # Increased size for better visibility
         self.tabs = QTabWidget()
 
         # Create tabs
@@ -54,7 +54,7 @@ class SettingsInterface(QDialog):
 
     def init_camera_tab(self):
         layout = QFormLayout()
-        # Default Camera selection using QComboBox with available cameras.
+        # Camera selection
         self.camera_combo = QComboBox()
         cameras = self.get_available_cameras()
         if cameras:
@@ -69,25 +69,25 @@ class SettingsInterface(QDialog):
             self.camera_combo.setEnabled(False)
         layout.addRow("Default Camera:", self.camera_combo)
 
-        # Frames Per Second setting
+        # FPS
         self.fps_spinbox = QSpinBox()
         self.fps_spinbox.setRange(1, 120)
         self.fps_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("DEFAULT_FPS", 30))
         layout.addRow("Frames Per Second:", self.fps_spinbox)
 
-        # Frame width setting
+        # Frame width
         self.width_spinbox = QSpinBox()
         self.width_spinbox.setRange(100, 10000)
         self.width_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("FRAME_WIDTH", 1280))
         layout.addRow("Frame Width:", self.width_spinbox)
 
-        # Frame height setting
+        # Frame height
         self.height_spinbox = QSpinBox()
         self.height_spinbox.setRange(100, 10000)
         self.height_spinbox.setValue(CUSTOMIZABLE_SETTINGS.get("FRAME_HEIGHT", 720))
         layout.addRow("Frame Height:", self.height_spinbox)
 
-        # Model complexity setting
+        # Model complexity
         self.model_complexity_spinbox = QSpinBox()
         self.model_complexity_spinbox.setRange(0, 2)
         self.model_complexity_spinbox.setValue(
@@ -100,7 +100,7 @@ class SettingsInterface(QDialog):
     def init_general_tab(self):
         layout = QFormLayout()
 
-        # Notification Cooldown setting
+        # Notification cooldown
         self.cooldown_spinbox = QSpinBox()
         self.cooldown_spinbox.setRange(1, 3600)
         self.cooldown_spinbox.setValue(
@@ -108,7 +108,7 @@ class SettingsInterface(QDialog):
         )
         layout.addRow("Notification Cooldown (sec):", self.cooldown_spinbox)
 
-        # Poor Posture Threshold setting
+        # Poor posture threshold
         self.poor_posture_spinbox = QSpinBox()
         self.poor_posture_spinbox.setRange(1, 100)
         self.poor_posture_spinbox.setValue(
@@ -116,28 +116,28 @@ class SettingsInterface(QDialog):
         )
         layout.addRow("Poor Posture Threshold:", self.poor_posture_spinbox)
 
-        # Default Posture Message setting
+        # Posture message
         self.posture_message_lineedit = QLineEdit()
         self.posture_message_lineedit.setText(
             CUSTOMIZABLE_SETTINGS.get(
                 "DEFAULT_POSTURE_MESSAGE", "Please sit up straight!"
             )
         )
+        self.posture_message_lineedit.setMinimumWidth(200)  # Ensure text visibility
         layout.addRow("Posture Message:", self.posture_message_lineedit)
 
-        # Add this block:
+        # Database logging checkbox
         self.db_logging_checkbox = QCheckBox()
         self.db_logging_checkbox.setChecked(
             CUSTOMIZABLE_SETTINGS.get("ENABLE_DATABASE_LOGGING", False)
         )
-        layout.addRow("Enable Database Logging", self.db_logging_checkbox)
+        layout.addRow("Enable Database Logging:", self.db_logging_checkbox)
 
-        # Database write interval setting
+        # Database write interval
         self.db_write_interval_spinbox = QSpinBox()
-        self.db_write_interval_spinbox.setRange(1, 3600)
-        self.db_write_interval_spinbox.setValue(
-            CUSTOMIZABLE_SETTINGS.get("DB_WRITE_INTERVAL_MINUTES", 5)
-        )
+        self.db_write_interval_spinbox.setRange(1, 1440)  # Max 24 hours
+        interval_seconds = CUSTOMIZABLE_SETTINGS.get("DB_WRITE_INTERVAL_SECONDS", 300)
+        self.db_write_interval_spinbox.setValue(interval_seconds // 60)
         layout.addRow(
             "Database Write Interval (minutes):", self.db_write_interval_spinbox
         )
@@ -147,21 +147,25 @@ class SettingsInterface(QDialog):
     def init_tracking_tab(self):
         main_layout = QVBoxLayout()
 
-        # Table to display/edit tracking intervals
+        # Tracking intervals table
         self.tracking_table = QTableWidget()
         self.tracking_table.setColumnCount(2)
         self.tracking_table.setHorizontalHeaderLabels(["Label", "Minutes"])
         self.tracking_table.horizontalHeader().setStretchLastSection(True)
+        self.tracking_table.setAlternatingRowColors(True)  # Better readability
+        self.tracking_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
         self.populate_tracking_table()
-
+        self.tracking_table.resizeColumnsToContents()  # Fit text initially
         main_layout.addWidget(QLabel("Tracking Intervals (Label : Minutes):"))
-        main_layout.addWidget(self.tracking_table)
+        main_layout.addWidget(self.tracking_table, stretch=1)  # Expand table
 
-        # Add tracking duration setting
+        # Tracking duration
         duration_layout = QHBoxLayout()
         duration_label = QLabel("Tracking Duration (minutes):")
         self.tracking_duration_spinbox = QSpinBox()
-        self.tracking_duration_spinbox.setRange(1, 60)  # 1 to 60 minutes
+        self.tracking_duration_spinbox.setRange(1, 60)
         self.tracking_duration_spinbox.setValue(
             CUSTOMIZABLE_SETTINGS.get("TRACKING_DURATION_MINUTES", 1)
         )
@@ -169,10 +173,11 @@ class SettingsInterface(QDialog):
         duration_layout.addWidget(self.tracking_duration_spinbox)
         main_layout.addLayout(duration_layout)
 
-        # Controls to add a new tracking interval
+        # Add interval controls
         add_layout = QHBoxLayout()
         self.new_interval_label_edit = QLineEdit()
         self.new_interval_label_edit.setPlaceholderText("Interval Label")
+        self.new_interval_label_edit.setMinimumWidth(100)  # Ensure visibility
         self.new_interval_spinbox = QSpinBox()
         self.new_interval_spinbox.setRange(0, 1440)
         self.new_interval_spinbox.setValue(15)
@@ -183,7 +188,7 @@ class SettingsInterface(QDialog):
         add_layout.addWidget(self.add_interval_button)
         main_layout.addLayout(add_layout)
 
-        # Button to remove the selected tracking interval
+        # Remove interval button
         self.remove_interval_button = QPushButton("Remove Selected Interval")
         self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
         main_layout.addWidget(self.remove_interval_button)
@@ -202,7 +207,7 @@ class SettingsInterface(QDialog):
     def add_tracking_interval(self):
         label = self.new_interval_label_edit.text().strip()
         if not label:
-            return  # Optionally, you might show a warning message.
+            return  # Could add a warning here
         minutes = self.new_interval_spinbox.value()
         row_position = self.tracking_table.rowCount()
         self.tracking_table.insertRow(row_position)
@@ -211,9 +216,7 @@ class SettingsInterface(QDialog):
         self.new_interval_label_edit.clear()
 
     def remove_tracking_interval(self):
-        selected_rows = set()
-        for item in self.tracking_table.selectedItems():
-            selected_rows.add(item.row())
+        selected_rows = {item.row() for item in self.tracking_table.selectedItems()}
         for row in sorted(selected_rows, reverse=True):
             self.tracking_table.removeRow(row)
 
@@ -227,7 +230,7 @@ class SettingsInterface(QDialog):
         return available
 
     def accept(self):
-        # Update Camera settings
+        # Camera settings
         cam_id = self.camera_combo.currentData()
         if cam_id is None or cam_id == -1:
             cam_id = CUSTOMIZABLE_SETTINGS.get("DEFAULT_CAMERA_ID", 0)
@@ -239,7 +242,7 @@ class SettingsInterface(QDialog):
             "MODEL_COMPLEXITY"
         ] = self.model_complexity_spinbox.value()
 
-        # Update General settings
+        # General settings
         CUSTOMIZABLE_SETTINGS["NOTIFICATION_COOLDOWN"] = self.cooldown_spinbox.value()
         CUSTOMIZABLE_SETTINGS[
             "POOR_POSTURE_THRESHOLD"
@@ -247,19 +250,16 @@ class SettingsInterface(QDialog):
         CUSTOMIZABLE_SETTINGS[
             "DEFAULT_POSTURE_MESSAGE"
         ] = self.posture_message_lineedit.text()
-
-        # Add this line:
         CUSTOMIZABLE_SETTINGS[
             "ENABLE_DATABASE_LOGGING"
         ] = self.db_logging_checkbox.isChecked()
-        CUSTOMIZABLE_SETTINGS[
-            "DB_WRITE_INTERVAL_SECONDS"
-        ] = self.db_write_interval_spinbox.value()
+        CUSTOMIZABLE_SETTINGS["DB_WRITE_INTERVAL_SECONDS"] = (
+            self.db_write_interval_spinbox.value() * 60  # Convert minutes to seconds
+        )
 
-        # Update Tracking Intervals from table
+        # Tracking intervals
         intervals = {}
-        row_count = self.tracking_table.rowCount()
-        for row in range(row_count):
+        for row in range(self.tracking_table.rowCount()):
             label_item = self.tracking_table.item(row, 0)
             minutes_item = self.tracking_table.item(row, 1)
             if label_item and minutes_item:
