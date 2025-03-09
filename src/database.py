@@ -4,7 +4,7 @@ from datetime import datetime
 from pose_landmarks import POSTURE_LANDMARKS
 
 
-class DBManager:
+class Database:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
         self.cursor = self.conn.cursor()

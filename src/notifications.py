@@ -4,7 +4,7 @@ import time
 from settings import get_setting
 
 
-class NotificationManager:
+class Notifications:
     def __init__(self, icon_path):
         self.last_notification_time = 0
         self.notification_cooldown = get_setting("NOTIFICATION_COOLDOWN")
