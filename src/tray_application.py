@@ -45,7 +45,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.frame_reader = Webcam()
         self.detector = PoseDetector()
         self.scores = ScoreHistory()
-        self.notifier = NotificationManager()
+        self.notifier = NotificationManager(icon_path=self.default_icon_path)
 
         self.tracking_enabled = False
         self.video_window = None

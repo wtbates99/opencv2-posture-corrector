@@ -5,11 +5,12 @@ from settings import get_setting
 
 
 class NotificationManager:
-    def __init__(self):
+    def __init__(self, icon_path):
         self.last_notification_time = 0
         self.notification_cooldown = get_setting("NOTIFICATION_COOLDOWN")
         self.poor_posture_threshold = get_setting("POOR_POSTURE_THRESHOLD")
         self.posture_message = get_setting("DEFAULT_POSTURE_MESSAGE")
+        self.icon_path = icon_path
         self.interval_message = None
 
     def set_interval_message(self, message):
@@ -27,9 +28,6 @@ class NotificationManager:
                 self.last_notification_time = current_time
 
     def send_notification(self, message, title):
-        # Get icon path from settings
-        icon_path = get_setting("ICON_PATH")
-
         if platform.system() == "Darwin":  # macOS
             os.system(
                 """
@@ -39,13 +37,13 @@ class NotificationManager:
                 )
             )
         elif platform.system() == "Linux":
-            os.system(f'notify-send "{title}" "{message}" -i "{icon_path}"')
+            os.system(f'notify-send "{title}" "{message}" -i "{self.icon_path}"')
         else:
             from plyer import notification
 
             notification.notify(
                 title=title,
                 message=message,
-                app_icon=icon_path,
+                app_icon=self.icon_path,
                 timeout=10,
             )
