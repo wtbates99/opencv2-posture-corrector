@@ -1,4 +1,4 @@
-# OpenCV2 Posture Corrector 🖥️➡️🧘
+# OpenCV2 Posture Corrector
 
 **Revolutionize Your Workspace Ergonomics with Real-Time Posture Monitoring**
 
@@ -16,15 +16,6 @@
 - **Smart Notifications**: Receive automatic alerts when poor posture is detected.
 - **Cross-Platform**: Fully compatible with Windows, macOS, and Linux.
 - **Privacy First**: All processing is done locally—no data is ever stored or transmitted.
-
----
-
-## 🛠️ Technical Stack
-
-- **MediaPipe**: For precise pose detection and landmark tracking.
-- **OpenCV**: Powers video processing and visualization.
-- **PyQt6**: Ensures a sleek and responsive system tray interface.
-- **Platform-Specific Notifications**: Native alerts for Windows, macOS, and Linux.
 
 ---
 
@@ -96,22 +87,6 @@ Your privacy is paramount. OpenCV2 Posture Corrector processes all video data lo
 - **Advanced Analytics**: Gain insights into your ergonomic habits.
 - **Customizable Alerts**: Tailor notifications to your specific needs.
 - **Integration with Productivity Tools**: Sync with calendars and productivity apps for smarter reminders.
-
----
-
-## 📸 Interface Preview
-
-### System Tray Icon
-![Toolbar Icon](src/icon.png)
-*System tray icon indicating posture status*
-
-### Menu Options
-![Toolbar Menu](static/toolbar_options.png)
-*Available options in the toolbar menu*
-
-### Notifications
-![Notification](static/notification.png)
-*Poor posture alert notification*
 
 ---
 
