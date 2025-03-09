@@ -19,7 +19,6 @@ import math
 from collections import defaultdict
 
 
-# Database connection functions
 def get_posture_scores():
     db_path = os.path.join(os.path.dirname(__file__), "posture_data.db")
     conn = sqlite3.connect(db_path)
@@ -40,7 +39,6 @@ def get_pose_landmarks():
     return data
 
 
-# Helper function to compute angle between two vectors
 def compute_angle(v1, v2):
     dot = v1[0] * v2[0] + v1[1] * v2[1]
     mag1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2)
@@ -51,7 +49,6 @@ def compute_angle(v1, v2):
     return math.degrees(angle)
 
 
-# Compute neck and shoulder angles from landmarks
 def compute_angles(landmarks):
     left_shoulder = landmarks["LEFT_SHOULDER"]
     right_shoulder = landmarks["RIGHT_SHOULDER"]
@@ -120,212 +117,61 @@ def create_chart(series, title, y_label, y_min, y_max, series_color):
     return chart
 
 
-class MainWindow(QMainWindow):
-    def __init__(self):
+class PostureAnalytics(QMainWindow):
+    def __init__(self, db_path: str):
         super().__init__()
         self.setWindowTitle("Posture Analytics")
         self.resize(1200, 800)
+        self.db_path = db_path
 
-        # Fetch data
-        posture_data = get_posture_scores()
-        if len(posture_data) < 2:
-            raise ValueError(
-                "Insufficient posture score data points to create a chart."
-            )
-        pose_landmarks = get_pose_landmarks()
+        # Create UI elements
+        self.setup_ui()
 
-        # Process posture scores
-        timestamps = [datetime.fromisoformat(row[0]) for row in posture_data]
-        scores = [float(row[1]) for row in posture_data]
-        t0 = min(timestamps)
-        x_seconds = [(t - t0).total_seconds() for t in timestamps]
+        # Initial data load
+        self.update_data()
 
-        # Compute trend line
-        slope, intercept = np.polyfit(x_seconds, scores, 1)
-        t_max = max(timestamps)
-        x_max_seconds = (t_max - t0).total_seconds()
+    def setup_ui(self):
+        # Create chart views
+        self.posture_chart_view = QChartView()
+        self.posture_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Create posture score series
-        series = QLineSeries()
-        series.setName("Posture Score")
-        for t, score in zip(timestamps, scores):
-            msecs = int(t.timestamp() * 1000)
-            series.append(msecs, score)
-        series.setPen(QPen(Qt.GlobalColor.cyan, 2))
-        series.setPointsVisible(True)
+        self.neck_chart_view = QChartView()
+        self.neck_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Create trend line series
-        trend_series = QLineSeries()
-        trend_series.setName("Trend Line")
-        y_start = intercept
-        y_end = slope * x_max_seconds + intercept
-        t0_msecs = int(t0.timestamp() * 1000)
-        t_max_msecs = int(t_max.timestamp() * 1000)
-        trend_series.append(t0_msecs, y_start)
-        trend_series.append(t_max_msecs, y_end)
-        trend_series.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
-
-        # Create posture score chart
-        posture_chart = QChart()
-        posture_chart.setTitle("Posture Score Over Time")
-        posture_chart.setTitleBrush(
-            QBrush(QColor("#ffffff"))
-        )  # Set title color to white
-        posture_chart.addSeries(series)
-        posture_chart.addSeries(trend_series)
-        posture_chart.legend().setVisible(True)
-        posture_chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
-
-        axis_x = QDateTimeAxis()
-        axis_x.setFormat("hh:mm")
-        axis_x.setTitleText("Time")
-        posture_chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
-
-        axis_y = QValueAxis()
-        axis_y.setTitleText("Posture Score")
-        axis_y.setRange(min(scores) - 5, max(scores) + 5)
-        posture_chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
-
-        series.attachAxis(axis_x)
-        series.attachAxis(axis_y)
-        trend_series.attachAxis(axis_x)
-        trend_series.attachAxis(axis_y)
-
-        # Customize posture chart appearance
-        posture_chart.setBackgroundBrush(QBrush(QColor("#3c3c3c")))
-        posture_chart.setPlotAreaBackgroundBrush(QBrush(QColor("#2b2b2b")))
-        posture_chart.setPlotAreaBackgroundVisible(True)
-        axis_x.setLabelsColor(QColor("#ffffff"))
-        axis_y.setLabelsColor(QColor("#ffffff"))
-        axis_x.setTitleBrush(QBrush(QColor("#ffffff")))
-        axis_y.setTitleBrush(QBrush(QColor("#ffffff")))
-        axis_x.setGridLineVisible(True)
-        axis_y.setGridLineVisible(True)
-        axis_x.setGridLinePen(QPen(QColor("#555555"), 0.5))
-        axis_y.setGridLinePen(QPen(QColor("#555555"), 0.5))
-
-        # Set fonts for posture chart
-        title_font = QFont("Arial", 14, QFont.Weight.Bold)
-        posture_chart.setTitleFont(title_font)
-        axis_font = QFont("Arial", 12)
-        axis_x.setTitleFont(axis_font)
-        axis_y.setTitleFont(axis_font)
-        legend = posture_chart.legend()
-        legend.setFont(QFont("Arial", 10))
-        legend.setLabelColor(QColor("#ffffff"))
-
-        posture_chart_view = QChartView(posture_chart)
-        posture_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Process pose landmarks
-        pose_data = defaultdict(dict)
-        for row in pose_landmarks:
-            timestamp, landmark_name, x, y, z, visibility = row
-            pose_data[timestamp][landmark_name] = (x, y, z, visibility)
-
-        neck_data = []
-        shoulder_data = []
-        for timestamp, landmarks in pose_data.items():
-            if all(
-                key in landmarks for key in ["NOSE", "LEFT_SHOULDER", "RIGHT_SHOULDER"]
-            ):
-                neck_angle, shoulder_angle = compute_angles(landmarks)
-                neck_data.append((timestamp, neck_angle))
-                shoulder_data.append((timestamp, shoulder_angle))
-
-        # Sort data by timestamp
-        neck_data.sort(key=lambda x: x[0])
-        shoulder_data.sort(key=lambda x: x[0])
-
-        # Create series for neck and shoulder angles
-        neck_series = QLineSeries()
-        neck_series.setName("Neck Angle")
-        for ts, angle in neck_data:
-            msecs = int(datetime.fromisoformat(ts).timestamp() * 1000)
-            neck_series.append(msecs, angle)
-
-        shoulder_series = QLineSeries()
-        shoulder_series.setName("Shoulder Angle")
-        for ts, angle in shoulder_data:
-            msecs = int(datetime.fromisoformat(ts).timestamp() * 1000)
-            shoulder_series.append(msecs, angle)
-
-        # Create charts for neck and shoulder angles
-        neck_chart = create_chart(
-            neck_series,
-            "Neck Angle Over Time",
-            "Neck Angle (°)",
-            0,
-            180,
-            Qt.GlobalColor.green,
-        )
-        shoulder_chart = create_chart(
-            shoulder_series,
-            "Shoulder Angle Over Time",
-            "Shoulder Angle (°)",
-            0,
-            180,
-            Qt.GlobalColor.magenta,
-        )
-
-        neck_chart_view = QChartView(neck_chart)
-        neck_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        shoulder_chart_view = QChartView(shoulder_chart)
-        shoulder_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Compute averages
-        avg_neck_angle = (
-            sum(angle for _, angle in neck_data) / len(neck_data) if neck_data else 0
-        )
-        avg_shoulder_angle = (
-            sum(angle for _, angle in shoulder_data) / len(shoulder_data)
-            if shoulder_data
-            else 0
-        )
-        avg_score = sum(scores) / len(scores) if scores else 0
-        slope_per_minute = slope * 60  # Convert to points per minute
-        trend_text = "Improving" if slope > 0 else "Worsening"
+        self.shoulder_chart_view = QChartView()
+        self.shoulder_chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Create score card
-        score_card_group = QGroupBox("Score Card")
+        self.score_card_group = QGroupBox("Score Card")
         score_card_layout = QVBoxLayout()
         score_card_layout.setSpacing(10)
 
         label_font = QFont("Arial", 12)
-        avg_score_label = QLabel(f"Average Posture Score: {avg_score:.2f}")
-        avg_score_label.setFont(label_font)
-        avg_neck_label = QLabel(f"Average Neck Angle: {avg_neck_angle:.2f}°")
-        avg_neck_label.setFont(label_font)
-        avg_shoulder_label = QLabel(
-            f"Average Shoulder Angle: {avg_shoulder_angle:.2f}°"
-        )
-        avg_shoulder_label.setFont(label_font)
-        trend_label = QLabel(
-            f"Trend: {trend_text} by {abs(slope_per_minute):.2f} points/min"
-        )
-        trend_label.setFont(label_font)
-        if slope > 0:
-            trend_label.setStyleSheet("color: green;")
-        else:
-            trend_label.setStyleSheet("color: red;")
+        self.avg_score_label = QLabel()
+        self.avg_score_label.setFont(label_font)
+        self.avg_neck_label = QLabel()
+        self.avg_neck_label.setFont(label_font)
+        self.avg_shoulder_label = QLabel()
+        self.avg_shoulder_label.setFont(label_font)
+        self.trend_label = QLabel()
+        self.trend_label.setFont(label_font)
 
-        score_card_layout.addWidget(avg_score_label)
-        score_card_layout.addWidget(avg_neck_label)
-        score_card_layout.addWidget(avg_shoulder_label)
-        score_card_layout.addWidget(trend_label)
-        score_card_group.setLayout(score_card_layout)
+        score_card_layout.addWidget(self.avg_score_label)
+        score_card_layout.addWidget(self.avg_neck_label)
+        score_card_layout.addWidget(self.avg_shoulder_label)
+        score_card_layout.addWidget(self.trend_label)
+        self.score_card_group.setLayout(score_card_layout)
 
         # Set up main layout
         main_layout = QVBoxLayout()
-        main_layout.addWidget(posture_chart_view)
+        main_layout.addWidget(self.posture_chart_view)
 
         angle_charts_layout = QHBoxLayout()
-        angle_charts_layout.addWidget(neck_chart_view)
-        angle_charts_layout.addWidget(shoulder_chart_view)
+        angle_charts_layout.addWidget(self.neck_chart_view)
+        angle_charts_layout.addWidget(self.shoulder_chart_view)
         main_layout.addLayout(angle_charts_layout)
 
-        main_layout.addWidget(score_card_group)
+        main_layout.addWidget(self.score_card_group)
 
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
@@ -361,9 +207,198 @@ class MainWindow(QMainWindow):
         """
         self.setStyleSheet(dark_stylesheet)
 
+    def update_data(self):
+        # Fetch data
+        posture_data = get_posture_scores()
+        if len(posture_data) < 2:
+            raise ValueError(
+                "Insufficient posture score data points to create a chart."
+            )
+        pose_landmarks = get_pose_landmarks()
+
+        # Update charts and score card
+        self.update_posture_chart(posture_data)
+        self.update_angle_charts(pose_landmarks)
+        self.update_score_card()
+
+    def update_posture_chart(self, posture_data):
+        # Process posture scores
+        timestamps = [datetime.fromisoformat(row[0]) for row in posture_data]
+        self.scores = [float(row[1]) for row in posture_data]
+        t0 = min(timestamps)
+        x_seconds = [(t - t0).total_seconds() for t in timestamps]
+
+        # Compute trend line
+        self.slope, self.intercept = np.polyfit(x_seconds, self.scores, 1)
+        t_max = max(timestamps)
+        x_max_seconds = (t_max - t0).total_seconds()
+
+        # Create posture score series
+        series = QLineSeries()
+        series.setName("Posture Score")
+        for t, score in zip(timestamps, self.scores):
+            msecs = int(t.timestamp() * 1000)
+            series.append(msecs, score)
+        series.setPen(QPen(Qt.GlobalColor.cyan, 2))
+        series.setPointsVisible(True)
+
+        # Create trend line series
+        trend_series = QLineSeries()
+        trend_series.setName("Trend Line")
+        y_start = self.intercept
+        y_end = self.slope * x_max_seconds + self.intercept
+        t0_msecs = int(t0.timestamp() * 1000)
+        t_max_msecs = int(t_max.timestamp() * 1000)
+        trend_series.append(t0_msecs, y_start)
+        trend_series.append(t_max_msecs, y_end)
+        trend_series.setPen(QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine))
+
+        # Create posture score chart
+        posture_chart = QChart()
+        posture_chart.setTitle("Posture Score Over Time")
+        posture_chart.setTitleBrush(QBrush(QColor("#ffffff")))
+        posture_chart.addSeries(series)
+        posture_chart.addSeries(trend_series)
+        posture_chart.legend().setVisible(True)
+        posture_chart.legend().setAlignment(Qt.AlignmentFlag.AlignBottom)
+
+        axis_x = QDateTimeAxis()
+        axis_x.setFormat("hh:mm")
+        axis_x.setTitleText("Time")
+        posture_chart.addAxis(axis_x, Qt.AlignmentFlag.AlignBottom)
+
+        axis_y = QValueAxis()
+        axis_y.setTitleText("Posture Score")
+        axis_y.setRange(min(self.scores) - 5, max(self.scores) + 5)
+        posture_chart.addAxis(axis_y, Qt.AlignmentFlag.AlignLeft)
+
+        series.attachAxis(axis_x)
+        series.attachAxis(axis_y)
+        trend_series.attachAxis(axis_x)
+        trend_series.attachAxis(axis_y)
+
+        # Customize posture chart appearance
+        posture_chart.setBackgroundBrush(QBrush(QColor("#3c3c3c")))
+        posture_chart.setPlotAreaBackgroundBrush(QBrush(QColor("#2b2b2b")))
+        posture_chart.setPlotAreaBackgroundVisible(True)
+        axis_x.setLabelsColor(QColor("#ffffff"))
+        axis_y.setLabelsColor(QColor("#ffffff"))
+        axis_x.setTitleBrush(QBrush(QColor("#ffffff")))
+        axis_y.setTitleBrush(QBrush(QColor("#ffffff")))
+        axis_x.setGridLineVisible(True)
+        axis_y.setGridLineVisible(True)
+        axis_x.setGridLinePen(QPen(QColor("#555555"), 0.5))
+        axis_y.setGridLinePen(QPen(QColor("#555555"), 0.5))
+
+        # Set fonts for posture chart
+        title_font = QFont("Arial", 14, QFont.Weight.Bold)
+        posture_chart.setTitleFont(title_font)
+        axis_font = QFont("Arial", 12)
+        axis_x.setTitleFont(axis_font)
+        axis_y.setTitleFont(axis_font)
+        legend = posture_chart.legend()
+        legend.setFont(QFont("Arial", 10))
+        legend.setLabelColor(QColor("#ffffff"))
+
+        self.posture_chart_view.setChart(posture_chart)
+
+    def update_angle_charts(self, pose_landmarks):
+        # Process pose landmarks
+        pose_data = defaultdict(dict)
+        for row in pose_landmarks:
+            timestamp, landmark_name, x, y, z, visibility = row
+            pose_data[timestamp][landmark_name] = (x, y, z, visibility)
+
+        self.neck_data = []
+        self.shoulder_data = []
+        for timestamp, landmarks in pose_data.items():
+            if all(
+                key in landmarks for key in ["NOSE", "LEFT_SHOULDER", "RIGHT_SHOULDER"]
+            ):
+                neck_angle, shoulder_angle = compute_angles(landmarks)
+                self.neck_data.append((timestamp, neck_angle))
+                self.shoulder_data.append((timestamp, shoulder_angle))
+
+        # Sort data by timestamp
+        self.neck_data.sort(key=lambda x: x[0])
+        self.shoulder_data.sort(key=lambda x: x[0])
+
+        # Create series for neck and shoulder angles
+        neck_series = QLineSeries()
+        neck_series.setName("Neck Angle")
+        for ts, angle in self.neck_data:
+            msecs = int(datetime.fromisoformat(ts).timestamp() * 1000)
+            neck_series.append(msecs, angle)
+
+        shoulder_series = QLineSeries()
+        shoulder_series.setName("Shoulder Angle")
+        for ts, angle in self.shoulder_data:
+            msecs = int(datetime.fromisoformat(ts).timestamp() * 1000)
+            shoulder_series.append(msecs, angle)
+
+        # Create charts for neck and shoulder angles
+        neck_chart = create_chart(
+            neck_series,
+            "Neck Angle Over Time",
+            "Neck Angle (°)",
+            0,
+            180,
+            Qt.GlobalColor.green,
+        )
+        shoulder_chart = create_chart(
+            shoulder_series,
+            "Shoulder Angle Over Time",
+            "Shoulder Angle (°)",
+            0,
+            180,
+            Qt.GlobalColor.magenta,
+        )
+
+        self.neck_chart_view.setChart(neck_chart)
+        self.shoulder_chart_view.setChart(shoulder_chart)
+
+    def update_score_card(self):
+        # Compute averages
+        self.avg_neck_angle = (
+            sum(angle for _, angle in self.neck_data) / len(self.neck_data)
+            if self.neck_data
+            else 0
+        )
+        self.avg_shoulder_angle = (
+            sum(angle for _, angle in self.shoulder_data) / len(self.shoulder_data)
+            if self.shoulder_data
+            else 0
+        )
+        self.avg_score = sum(self.scores) / len(self.scores) if self.scores else 0
+        slope_per_minute = self.slope * 60  # Convert to points per minute
+        trend_text = "Improving" if self.slope > 0 else "Worsening"
+
+        # Update labels
+        self.avg_score_label.setText(f"Average Posture Score: {self.avg_score:.2f}")
+        self.avg_neck_label.setText(f"Average Neck Angle: {self.avg_neck_angle:.2f}°")
+        self.avg_shoulder_label.setText(
+            f"Average Shoulder Angle: {self.avg_shoulder_angle:.2f}°"
+        )
+        self.trend_label.setText(
+            f"Trend: {trend_text} by {abs(slope_per_minute):.2f} points/min"
+        )
+
+        if self.slope > 0:
+            self.trend_label.setStyleSheet("color: green;")
+        else:
+            self.trend_label.setStyleSheet("color: red;")
+
+    def refresh_data(self):
+        """Method to refresh data from the database and update the UI"""
+        try:
+            self.update_data()
+        except Exception as e:
+            print(f"Error refreshing data: {e}")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
+    db_path = os.path.join(os.path.dirname(__file__), "posture_data.db")
+    window = PostureAnalytics(db_path)
     window.show()
     sys.exit(app.exec())
