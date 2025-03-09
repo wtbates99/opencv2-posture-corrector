@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QPushButton,
+    QCheckBox,
 )
 import cv2
 
@@ -124,6 +125,21 @@ class SettingsDialog(QDialog):
         )
         layout.addRow("Posture Message:", self.posture_message_lineedit)
 
+        # Add this block:
+        self.db_logging_checkbox = QCheckBox()
+        self.db_logging_checkbox.setChecked(
+            CUSTOMIZABLE_SETTINGS.get("ENABLE_DATABASE_LOGGING", False)
+        )
+        layout.addRow("Enable Database Logging", self.db_logging_checkbox)
+
+        # Database write interval setting
+        self.db_write_interval_spinbox = QSpinBox()
+        self.db_write_interval_spinbox.setRange(1, 3600)
+        self.db_write_interval_spinbox.setValue(
+            CUSTOMIZABLE_SETTINGS.get("DB_WRITE_INTERVAL_SECONDS", 900)
+        )
+        layout.addRow("Database Write Interval (sec):", self.db_write_interval_spinbox)
+
         self.general_tab.setLayout(layout)
 
     def init_tracking_tab(self):
@@ -197,7 +213,7 @@ class SettingsDialog(QDialog):
         return available
 
     def accept(self):
-        # Update Camera settings.
+        # Update Camera settings
         cam_id = self.camera_combo.currentData()
         if cam_id is None or cam_id == -1:
             cam_id = CUSTOMIZABLE_SETTINGS.get("DEFAULT_CAMERA_ID", 0)
@@ -209,7 +225,7 @@ class SettingsDialog(QDialog):
             "MODEL_COMPLEXITY"
         ] = self.model_complexity_spinbox.value()
 
-        # Update General settings.
+        # Update General settings
         CUSTOMIZABLE_SETTINGS["NOTIFICATION_COOLDOWN"] = self.cooldown_spinbox.value()
         CUSTOMIZABLE_SETTINGS[
             "POOR_POSTURE_THRESHOLD"
@@ -218,7 +234,15 @@ class SettingsDialog(QDialog):
             "DEFAULT_POSTURE_MESSAGE"
         ] = self.posture_message_lineedit.text()
 
-        # Update Tracking Intervals from table.
+        # Add this line:
+        CUSTOMIZABLE_SETTINGS[
+            "ENABLE_DATABASE_LOGGING"
+        ] = self.db_logging_checkbox.isChecked()
+        CUSTOMIZABLE_SETTINGS[
+            "DB_WRITE_INTERVAL_SECONDS"
+        ] = self.db_write_interval_spinbox.value()
+
+        # Update Tracking Intervals from table
         intervals = {}
         row_count = self.tracking_table.rowCount()
         for row in range(row_count):

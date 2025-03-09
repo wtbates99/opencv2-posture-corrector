@@ -58,7 +58,7 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.db = DBManager(get_setting("DEFAULT_DB_NAME"))
         self.last_db_save = None
-        self.db_enabled = False
+        self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
 
         self.setup_tray()
 
@@ -93,11 +93,6 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addMenu(interval_menu)
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
-
-        self.toggle_db_action = QAction("Enable Database Logging", menu, checkable=True)
-        self.toggle_db_action.setChecked(False)
-        self.toggle_db_action.triggered.connect(self.toggle_database)
-        menu.addAction(self.toggle_db_action)
 
         self.settings_action = QAction("Settings", menu)
         self.settings_action.triggered.connect(self.open_settings)
@@ -234,19 +229,23 @@ class PostureTrackerTray(QSystemTrayIcon):
 
                 if self.db_enabled:
                     current_time = datetime.now()
+                    db_interval_seconds = get_setting(
+                        "DB_WRITE_INTERVAL_SECONDS", 900
+                    )  # Default to 15 minutes if not set
 
                     if (
                         self.tracking_interval > 0
                         and self.last_tracking_time is not None
                         and self.last_db_save is None
                         and (current_time - self.last_tracking_time).total_seconds()
-                        <= 900
+                        <= db_interval_seconds
                     ):
                         self._save_to_db(average_score)
 
                     elif self.tracking_interval == 0 and (
                         self.last_db_save is None
-                        or (current_time - self.last_db_save).total_seconds() >= 900
+                        or (current_time - self.last_db_save).total_seconds()
+                        >= db_interval_seconds
                     ):
                         self._save_to_db(average_score)
 
@@ -324,7 +323,7 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking()
 
         try:
-            QTimer.singleShot(60000, self.stop_interval_tracking)
+            QTimer.singleShot(900000, self.stop_interval_tracking)
         except Exception as e:
             print(f"Error setting up interval timer: {e}")
 
@@ -335,11 +334,6 @@ class PostureTrackerTray(QSystemTrayIcon):
                 self.toggle_tracking()
         except Exception as e:
             print(f"Error stopping interval tracking: {e}")
-
-    def toggle_database(self, checked):
-        self.db_enabled = checked
-        if checked:
-            self.last_db_save = None
 
     def signal_handler(self, signum, frame):
         self.quit_application()
@@ -404,6 +398,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.frame_reader = Webcam()
 
         self.setup_tray()
+
+        self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
+        if self.db_enabled:
+            self.last_db_save = None
 
         if was_tracking:
             self.toggle_tracking()
