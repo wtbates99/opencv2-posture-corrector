@@ -163,9 +163,18 @@ class PostureAnalytics(QMainWindow):
         score_card_layout.addWidget(self.trend_label)
         self.score_card_group.setLayout(score_card_layout)
 
-        # Create close button
+        # Create close button with larger size and more visible styling
         self.close_button = QPushButton("Close")
-        self.close_button.setFixedSize(100, 40)
+        self.close_button.setFixedSize(120, 50)
+        self.close_button.setStyleSheet(
+            """
+            background-color: #d32f2f;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            border-radius: 5px;
+        """
+        )
         self.close_button.clicked.connect(self.close)
 
         # Set up main layout
@@ -184,6 +193,9 @@ class PostureAnalytics(QMainWindow):
         button_layout.addStretch()
         button_layout.addWidget(self.close_button)
         main_layout.addLayout(button_layout)
+
+        # Add some spacing after the button
+        main_layout.addSpacing(20)
 
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
