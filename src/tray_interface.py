@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon,
     QVBoxLayout,
     QMessageBox,
+    QPushButton,
 )
 from database import Database
 from notifications import Notifications
@@ -199,6 +200,12 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         layout = QVBoxLayout()
         layout.addWidget(self.video_label)
+
+        # Add a close button for Linux users
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.video_window.close)
+        layout.addWidget(close_button)
+
         self.video_window.setLayout(layout)
 
         self.video_window.destroyed.connect(self.on_video_window_closed)
