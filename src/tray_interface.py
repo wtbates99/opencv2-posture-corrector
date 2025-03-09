@@ -9,14 +9,16 @@ from PyQt6.QtWidgets import (
     QMenu,
     QSystemTrayIcon,
     QVBoxLayout,
+    QMessageBox,
 )
 from database import Database
 from notifications import Notifications
-from pose_detector import PoseDetector
+from util__pose_detector import PoseDetector
 from util__scores import Scores
 from webcam import Webcam
-from util__settings import get_setting
+from util__settings import get_setting, update_setting
 from settings_interface import SettingsInterface
+from posture_analytics import PostureAnalytics
 from util__create_score_icon import create_score_icon
 import signal
 
@@ -47,6 +49,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.notifier = Notifications(icon_path=self.icon_path)
         self.db = Database(get_setting("DEFAULT_DB_NAME"))
         self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
+        self.analytics = PostureAnalytics(get_setting("DEFAULT_DB_NAME"))
 
         self.tracking_enabled = False
         self.video_window = None
@@ -73,11 +76,18 @@ class PostureTrackerTray(QSystemTrayIcon):
         menu.addAction(self.toggle_tracking_action)
         menu.addAction(self.toggle_video_action)
 
+        menu.addSeparator()
+
+        self.analytics_action = QAction("Analytics", menu)
+        self.analytics_action.triggered.connect(self.open_analytics)
+        menu.addAction(self.analytics_action)
+
         self.settings_action = QAction("Settings", menu)
         self.settings_action.triggered.connect(self.open_settings)
         menu.addAction(self.settings_action)
 
         menu.addSeparator()
+
         menu.addAction(
             QAction("Quit Application", menu, triggered=self.quit_application)
         )
@@ -146,6 +156,28 @@ class PostureTrackerTray(QSystemTrayIcon):
 
         self.setIcon(QIcon(self.icon_path))
 
+    def open_analytics(self):
+        """Open the analytics dialog."""
+        if not self.db_enabled:
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setWindowTitle("Database Tracking Required")
+            msg_box.setText("Analytics requires database tracking to be enabled.")
+            msg_box.setInformativeText("Would you like to enable it now?")
+            msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+
+            if msg_box.exec() == QMessageBox.StandardButton.Yes:
+                update_setting("ENABLE_DATABASE_LOGGING", True)
+                self.db_enabled = True
+                self.last_db_save = None
+            else:
+                return
+
+        self.analytics.show()
+
     def toggle_video(self):
         """Show or hide the video display window."""
         if self.video_window:
@@ -198,7 +230,7 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _save_to_db(self, average_score):
         """Save pose data to the database if conditions are met."""
         current_time = datetime.now()
-        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_SECONDS")
+        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_MINUTES") * 60
 
         should_save = (
             self.tracking_interval > 0
