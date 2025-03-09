@@ -46,24 +46,3 @@ class NotificationManager:
                 app_icon=None,
                 timeout=10,
             )
-
-
-if __name__ == "__main__":
-    notifier = NotificationManager()
-
-    notifier.set_interval_message("Checking posture every 5 minutes")
-    time.sleep(1)
-    notifier.set_interval_message("Checking posture every 3 minutes")
-    time.sleep(1)
-    notifier.set_interval_message("Checking posture every 1 minute")
-
-    notifier.check_and_notify(50)  # Should trigger notification
-
-    notifier.check_and_notify(50)  # Should not trigger (cooldown period)
-
-    notifier.set_interval_message("Checking posture every 10 minutes")
-
-    print("\nWaiting 5 seconds...")
-    time.sleep(5)
-    print("This posture alert should appear (after cooldown):")
-    notifier.check_and_notify(50)  # Should trigger (cooldown expired)

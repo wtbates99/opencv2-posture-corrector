@@ -49,10 +49,8 @@ class DBManager:
     def save_pose_data(self, landmarks, score):
         timestamp = datetime.now().isoformat()
 
-        # Save overall score
         self.insert("posture_scores", [(timestamp, score)])
 
-        # Save landmark positions with names
         landmark_data = []
         for landmark_enum in self.posture_landmarks:
             landmark = landmarks.landmark[landmark_enum]
