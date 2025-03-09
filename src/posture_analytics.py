@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QLabel,
     QGroupBox,
+    QPushButton,
 )
 from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QDateTimeAxis, QValueAxis
 from PyQt6.QtCore import Qt
@@ -162,6 +163,11 @@ class PostureAnalytics(QMainWindow):
         score_card_layout.addWidget(self.trend_label)
         self.score_card_group.setLayout(score_card_layout)
 
+        # Create close button
+        self.close_button = QPushButton("Close")
+        self.close_button.setFixedSize(100, 40)
+        self.close_button.clicked.connect(self.close)
+
         # Set up main layout
         main_layout = QVBoxLayout()
         main_layout.addWidget(self.posture_chart_view)
@@ -172,6 +178,12 @@ class PostureAnalytics(QMainWindow):
         main_layout.addLayout(angle_charts_layout)
 
         main_layout.addWidget(self.score_card_group)
+
+        # Add close button in a horizontal layout to position it
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.close_button)
+        main_layout.addLayout(button_layout)
 
         central_widget = QWidget()
         central_widget.setLayout(main_layout)
@@ -203,6 +215,19 @@ class PostureAnalytics(QMainWindow):
         }
         QLabel {
             padding: 5px;
+        }
+        QPushButton {
+            background-color: #4a4a4a;
+            border: 1px solid #666666;
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #5a5a5a;
+        }
+        QPushButton:pressed {
+            background-color: #3a3a3a;
         }
         """
         self.setStyleSheet(dark_stylesheet)
