@@ -4,4 +4,5 @@ numpy
 pytest
 plyer
 PyQt6>=6.0.0
+PyQt6-Charts
 psutil>=5.9.0
