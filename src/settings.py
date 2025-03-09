@@ -8,7 +8,7 @@ USER_SETTINGS_FILE = "user_settings.json"
 # Immutable settings - these cannot be changed through the UI.
 # ---------------------------
 IMMUTABLE_SETTINGS = {
-    "ICON_PATH": "icon.png",
+    "ICON_PATH": "static/icon.png",
     "DEFAULT_DB_NAME": "posture_data.db",
     # Core algorithm weights and thresholds that shouldn't be modified
     "POSTURE_WEIGHTS": [0.2, 0.2, 0.15, 0.15, 0.15, 0.1, 0.05],
