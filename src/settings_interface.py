@@ -1,28 +1,36 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
+import cv2
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QDialog,
-    QTabWidget,
-    QWidget,
-    QFormLayout,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QDialogButtonBox,
-    QLabel,
+    QCheckBox,
     QComboBox,
-    QSpinBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QStackedWidget,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
-    QPushButton,
-    QCheckBox,
-    QGroupBox,
+    QVBoxLayout,
+    QWidget,
 )
-import cv2
 
 from util__settings import (
     get_ml_settings,
+    get_profile_settings,
     get_runtime_settings,
     save_user_settings,
     update_ml_settings,
@@ -31,250 +39,440 @@ from util__settings import (
 
 
 class SettingsInterface(QDialog):
-    def __init__(self, parent=None):
+    SECTION_DEFS = [
+        ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
+        (
+            "notifications",
+            "Notifications",
+            QStyle.StandardPixmap.SP_MessageBoxInformation,
+        ),
+        ("tracking", "Tracking", QStyle.StandardPixmap.SP_BrowserReload),
+        ("advanced", "Advanced", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+    ]
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Customizable Settings")
-        self.resize(500, 400)
-        self.tabs = QTabWidget()
+        self.runtime_settings = get_runtime_settings()
+        self.ml_settings = get_ml_settings()
+        self.profile_settings = get_profile_settings()
+        self.validation_errors: Dict[str, str] = {}
 
-        # Create tabs
-        self.camera_tab = QWidget()
-        self.general_tab = QWidget()
-        self.tracking_tab = QWidget()
-        self.advanced_tab = QWidget()
+        self.setWindowTitle("Posture Settings")
+        self.resize(760, 560)
 
-        self.init_camera_tab()
-        self.init_general_tab()
-        self.init_tracking_tab()
-        self.init_advanced_tab()
+        self.hero_card = self._build_hero_card()
+        self.section_list = self._build_section_list()
+        self.section_stack = QStackedWidget()
+        self.section_key_to_index: Dict[str, int] = {}
 
-        self.tabs.addTab(self.camera_tab, "Camera")
-        self.tabs.addTab(self.general_tab, "General")
-        self.tabs.addTab(self.tracking_tab, "Tracking")
+        self.section_widgets: Dict[str, QWidget] = {}
+        for index, (key, _, _) in enumerate(self.SECTION_DEFS):
+            page = self._build_section_widget(key)
+            self.section_stack.addWidget(page)
+            self.section_widgets[key] = page
+            self.section_key_to_index[key] = index
 
-        self.show_advanced_checkbox = QCheckBox("Show advanced options")
-        self.show_advanced_checkbox.setChecked(False)
-        self.show_advanced_checkbox.toggled.connect(self.toggle_advanced_tab)
+        self.section_list.currentRowChanged.connect(self.section_stack.setCurrentIndex)
+        self.section_list.setCurrentRow(0)
 
-        # Dialog buttons
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
+        body_layout = QHBoxLayout()
+        body_layout.addWidget(self.section_list)
+        body_layout.addWidget(self.section_stack, 1)
+
         main_layout = QVBoxLayout()
-        main_layout.addWidget(self.tabs)
-        advanced_toggle_row = QHBoxLayout()
-        advanced_toggle_row.addStretch(1)
-        advanced_toggle_row.addWidget(self.show_advanced_checkbox)
-        main_layout.addLayout(advanced_toggle_row)
+        main_layout.addWidget(self.hero_card)
+        main_layout.addLayout(body_layout)
         main_layout.addWidget(self.button_box)
         self.setLayout(main_layout)
 
-    def init_camera_tab(self):
-        layout = QFormLayout()
-        # Default Camera selection using QComboBox with available cameras.
+        # Hide advanced controls until explicitly toggled on the hero card.
+        self._handle_advanced_toggle(self.show_advanced_checkbox.isChecked())
+
+    def _build_hero_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("heroCard")
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        layout = QVBoxLayout(card)
+
+        title = QLabel("Personalized posture coaching")
+        title_font = QFont(title.font())
+        title_font.setPointSize(title_font.pointSize() + 2)
+        title_font.setBold(True)
+        title.setFont(title_font)
+
+        subtitle = QLabel("Tune camera, alerts, and tracking in one place.")
+        subtitle.setStyleSheet("color: #50535a;")
+
+        summary_text = (
+            f"Baseline posture score: {self.profile_settings.baseline_posture_score:.1f}%\n"
+            f"Calibration status: {'Complete' if self.profile_settings.has_completed_onboarding else 'Pending'}\n"
+            f"Notifications: {'On' if self.runtime_settings.notifications_enabled else 'Off'}"
+        )
+        summary = QLabel(summary_text)
+        summary.setObjectName("heroSummary")
+        summary.setWordWrap(True)
+
+        self.show_advanced_checkbox = QCheckBox("Show advanced controls")
+        self.show_advanced_checkbox.setChecked(False)
+        self.show_advanced_checkbox.toggled.connect(self._handle_advanced_toggle)
+
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addWidget(summary)
+        layout.addWidget(
+            self.show_advanced_checkbox, alignment=Qt.AlignmentFlag.AlignRight
+        )
+
+        card.setStyleSheet(
+            """
+            QFrame#heroCard {
+                background-color: #f4f6fa;
+                border: 1px solid #d6d9e0;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QLabel#heroSummary {
+                color: #50535a;
+            }
+            """
+        )
+        return card
+
+    def _build_section_list(self) -> QListWidget:
+        widget = QListWidget()
+        widget.setFixedWidth(220)
+        widget.setSpacing(4)
+        widget.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        widget.setAlternatingRowColors(True)
+        for key, label, icon_name in self.SECTION_DEFS:
+            icon = self.style().standardIcon(icon_name)
+            item = QListWidgetItem(icon, label)
+            item.setData(Qt.ItemDataRole.UserRole, key)
+            widget.addItem(item)
+        return widget
+
+    def _build_section_widget(self, key: str) -> QWidget:
+        if key == "camera":
+            return self._create_camera_page()
+        if key == "notifications":
+            return self._create_notifications_page()
+        if key == "tracking":
+            return self._create_tracking_page()
+        if key == "advanced":
+            return self._create_advanced_page()
+        return QWidget()
+
+    def _create_camera_page(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
+        capture_group = QGroupBox("Capture")
+        capture_form = QFormLayout()
         self.camera_combo = QComboBox()
         cameras = self.get_available_cameras()
-        runtime_settings = get_runtime_settings()
         if cameras:
             for cam_id, cam_name in cameras:
                 self.camera_combo.addItem(cam_name, cam_id)
-            current_cam = runtime_settings.default_camera_id
+            current_cam = self.runtime_settings.default_camera_id
             index = self.camera_combo.findData(current_cam)
             if index != -1:
                 self.camera_combo.setCurrentIndex(index)
         else:
-            self.camera_combo.addItem("No Camera Found", -1)
+            self.camera_combo.addItem("No camera found", -1)
             self.camera_combo.setEnabled(False)
-        layout.addRow("Default Camera:", self.camera_combo)
+        capture_form.addRow("Default camera:", self.camera_combo)
 
-        # Frames Per Second setting
         self.fps_spinbox = QSpinBox()
         self.fps_spinbox.setRange(1, 120)
-        self.fps_spinbox.setValue(runtime_settings.default_fps)
-        layout.addRow("Frames Per Second:", self.fps_spinbox)
+        self.fps_spinbox.setValue(self.runtime_settings.default_fps)
+        capture_form.addRow("Frames per second:", self.fps_spinbox)
 
-        # Frame width setting
         self.width_spinbox = QSpinBox()
         self.width_spinbox.setRange(100, 10000)
-        self.width_spinbox.setValue(runtime_settings.frame_width)
-        layout.addRow("Frame Width:", self.width_spinbox)
+        self.width_spinbox.setValue(self.runtime_settings.frame_width)
+        capture_form.addRow("Frame width:", self.width_spinbox)
 
-        # Frame height setting
         self.height_spinbox = QSpinBox()
         self.height_spinbox.setRange(100, 10000)
-        self.height_spinbox.setValue(runtime_settings.frame_height)
-        layout.addRow("Frame Height:", self.height_spinbox)
+        self.height_spinbox.setValue(self.runtime_settings.frame_height)
+        capture_form.addRow("Frame height:", self.height_spinbox)
 
-        self.camera_tab.setLayout(layout)
+        capture_group.setLayout(capture_form)
 
-    def init_general_tab(self):
-        layout = QFormLayout()
-        runtime_settings = get_runtime_settings()
-
-        # Notification Cooldown setting
-        self.cooldown_spinbox = QSpinBox()
-        self.cooldown_spinbox.setRange(1, 3600)
-        self.cooldown_spinbox.setValue(runtime_settings.notification_cooldown)
-        layout.addRow("Notification Cooldown (sec):", self.cooldown_spinbox)
-
-        # Poor Posture Threshold setting
-        self.poor_posture_spinbox = QSpinBox()
-        self.poor_posture_spinbox.setRange(1, 100)
-        self.poor_posture_spinbox.setValue(runtime_settings.poor_posture_threshold)
-        layout.addRow("Poor Posture Threshold:", self.poor_posture_spinbox)
-
-        # Default Posture Message setting
-        self.posture_message_lineedit = QLineEdit()
-        self.posture_message_lineedit.setText(runtime_settings.default_posture_message)
-        layout.addRow("Posture Message:", self.posture_message_lineedit)
-
-        # Add this block:
-        self.db_logging_checkbox = QCheckBox()
-        self.db_logging_checkbox.setChecked(runtime_settings.enable_database_logging)
-        layout.addRow("Enable Database Logging", self.db_logging_checkbox)
-
-        # Database write interval setting
-        self.db_write_interval_spinbox = QSpinBox()
-        self.db_write_interval_spinbox.setRange(1, 3600)
-        self.db_write_interval_spinbox.setValue(
-            runtime_settings.db_write_interval_seconds
+        layout.addWidget(capture_group)
+        layout.addWidget(
+            self._create_help_label(
+                "Choose the camera and resolution you typically use. Higher resolution improves detection at the cost of performance."
+            )
         )
-        layout.addRow("Database Write Interval (sec):", self.db_write_interval_spinbox)
+        layout.addStretch(1)
+        return container
 
-        self.general_tab.setLayout(layout)
+    def _create_notifications_page(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
 
-    def init_tracking_tab(self):
-        main_layout = QVBoxLayout()
+        alerts_group = QGroupBox("Alerts")
+        alerts_form = QFormLayout()
 
-        # Table to display/edit tracking intervals
+        self.notifications_enabled_checkbox = QCheckBox("Enable desktop notifications")
+        self.notifications_enabled_checkbox.setChecked(
+            self.runtime_settings.notifications_enabled
+        )
+        alerts_form.addRow(self.notifications_enabled_checkbox)
+
+        self.focus_mode_checkbox = QCheckBox("Pause reminders during focus mode")
+        self.focus_mode_checkbox.setChecked(self.runtime_settings.focus_mode_enabled)
+        alerts_form.addRow(self.focus_mode_checkbox)
+
+        self.cooldown_spinbox = QSpinBox()
+        self.cooldown_spinbox.setRange(30, 3600)
+        self.cooldown_spinbox.setValue(self.runtime_settings.notification_cooldown)
+        alerts_form.addRow("Notification cooldown (sec):", self.cooldown_spinbox)
+
+        self.poor_posture_spinbox = QSpinBox()
+        self.poor_posture_spinbox.setRange(10, 100)
+        self.poor_posture_spinbox.setValue(self.runtime_settings.poor_posture_threshold)
+        alerts_form.addRow("Poor posture threshold:", self.poor_posture_spinbox)
+
+        self.posture_message_lineedit = QLineEdit()
+        self.posture_message_lineedit.setText(
+            self.runtime_settings.default_posture_message
+        )
+        self.posture_message_lineedit.textChanged.connect(
+            self._validate_posture_message
+        )
+        alerts_form.addRow("Posture message:", self.posture_message_lineedit)
+
+        self.posture_message_error = self._create_error_label()
+        alerts_form.addRow("", self.posture_message_error)
+
+        alerts_group.setLayout(alerts_form)
+
+        logging_group = QGroupBox("Data logging")
+        logging_form = QFormLayout()
+        self.db_logging_checkbox = QCheckBox("Persist session data to the database")
+        self.db_logging_checkbox.setChecked(
+            self.runtime_settings.enable_database_logging
+        )
+        logging_form.addRow(self.db_logging_checkbox)
+
+        self.db_write_interval_spinbox = QSpinBox()
+        self.db_write_interval_spinbox.setRange(60, 3600)
+        self.db_write_interval_spinbox.setSingleStep(60)
+        self.db_write_interval_spinbox.setValue(
+            self.runtime_settings.db_write_interval_seconds
+        )
+        logging_form.addRow(
+            "Database write interval (sec):", self.db_write_interval_spinbox
+        )
+        logging_group.setLayout(logging_form)
+
+        layout.addWidget(alerts_group)
+        layout.addWidget(
+            self._create_help_label(
+                "Set thresholds and messaging for posture alerts. Focus mode keeps monitoring active but suppresses notifications."
+            )
+        )
+        layout.addWidget(logging_group)
+        layout.addWidget(
+            self._create_help_label(
+                "Enable logging to review history or export data. The interval controls how often entries are written."
+            )
+        )
+        layout.addStretch(1)
+        return container
+
+    def _create_tracking_page(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
+        schedule_group = QGroupBox("Tracking cadence")
+        schedule_layout = QVBoxLayout()
+
         self.tracking_table = QTableWidget()
         self.tracking_table.setColumnCount(2)
         self.tracking_table.setHorizontalHeaderLabels(["Label", "Minutes"])
         self.tracking_table.horizontalHeader().setStretchLastSection(True)
+        self.tracking_table.verticalHeader().setVisible(False)
         self.populate_tracking_table()
+        schedule_layout.addWidget(self.tracking_table)
 
-        main_layout.addWidget(QLabel("Tracking Intervals (Label : Minutes):"))
-        main_layout.addWidget(self.tracking_table)
+        table_help = self._create_help_label(
+            "Use descriptive labels so tray quick actions stay clear. Minutes can be zero for always-on tracking."
+        )
+        schedule_layout.addWidget(table_help)
 
-        # Add tracking duration setting
+        controls_layout = QHBoxLayout()
+        self.new_interval_label_edit = QLineEdit()
+        self.new_interval_label_edit.setPlaceholderText("Interval label")
+        self.new_interval_spinbox = QSpinBox()
+        self.new_interval_spinbox.setRange(0, 1440)
+        self.new_interval_spinbox.setValue(30)
+        self.add_interval_button = QPushButton("Add interval")
+        self.add_interval_button.clicked.connect(self.add_tracking_interval)
+        controls_layout.addWidget(self.new_interval_label_edit)
+        controls_layout.addWidget(self.new_interval_spinbox)
+        controls_layout.addWidget(self.add_interval_button)
+        schedule_layout.addLayout(controls_layout)
+
+        self.remove_interval_button = QPushButton("Remove selected")
+        self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
+        schedule_layout.addWidget(self.remove_interval_button)
+
+        self.interval_error_label = self._create_error_label()
+        schedule_layout.addWidget(self.interval_error_label)
+
+        schedule_group.setLayout(schedule_layout)
+
         duration_layout = QHBoxLayout()
-        duration_label = QLabel("Tracking Duration (minutes):")
+        duration_label = QLabel("Tracking duration (minutes):")
         self.tracking_duration_spinbox = QSpinBox()
-        self.tracking_duration_spinbox.setRange(1, 60)  # 1 to 60 minutes
+        self.tracking_duration_spinbox.setRange(1, 60)
         self.tracking_duration_spinbox.setValue(
-            get_runtime_settings().tracking_duration_minutes
+            self.runtime_settings.tracking_duration_minutes
         )
         duration_layout.addWidget(duration_label)
         duration_layout.addWidget(self.tracking_duration_spinbox)
-        main_layout.addLayout(duration_layout)
 
-        # Controls to add a new tracking interval
-        add_layout = QHBoxLayout()
-        self.new_interval_label_edit = QLineEdit()
-        self.new_interval_label_edit.setPlaceholderText("Interval Label")
-        self.new_interval_spinbox = QSpinBox()
-        self.new_interval_spinbox.setRange(0, 1440)
-        self.new_interval_spinbox.setValue(15)
-        self.add_interval_button = QPushButton("Add Interval")
-        self.add_interval_button.clicked.connect(self.add_tracking_interval)
-        add_layout.addWidget(self.new_interval_label_edit)
-        add_layout.addWidget(self.new_interval_spinbox)
-        add_layout.addWidget(self.add_interval_button)
-        main_layout.addLayout(add_layout)
+        layout.addWidget(schedule_group)
+        layout.addLayout(duration_layout)
+        layout.addWidget(
+            self._create_help_label(
+                "Intervals define how often tracking restarts. Duration controls how long each session runs when scheduled."
+            )
+        )
+        layout.addStretch(1)
+        return container
 
-        # Button to remove the selected tracking interval
-        self.remove_interval_button = QPushButton("Remove Selected Interval")
-        self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
-        main_layout.addWidget(self.remove_interval_button)
+    def _create_advanced_page(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
 
-        self.tracking_tab.setLayout(main_layout)
-
-    def init_advanced_tab(self):
-        layout = QVBoxLayout()
-        ml_settings = get_ml_settings()
-
+        core_group = QGroupBox("Detection tuning")
         core_form = QFormLayout()
+
         self.model_complexity_spinbox = QSpinBox()
         self.model_complexity_spinbox.setRange(0, 2)
-        self.model_complexity_spinbox.setValue(ml_settings.model_complexity)
-        core_form.addRow("Model Complexity:", self.model_complexity_spinbox)
+        self.model_complexity_spinbox.setValue(self.ml_settings.model_complexity)
+        core_form.addRow("Model complexity:", self.model_complexity_spinbox)
 
         self.detection_confidence_spinbox = QDoubleSpinBox()
         self.detection_confidence_spinbox.setRange(0.0, 1.0)
         self.detection_confidence_spinbox.setSingleStep(0.05)
         self.detection_confidence_spinbox.setDecimals(2)
-        self.detection_confidence_spinbox.setValue(ml_settings.min_detection_confidence)
-        core_form.addRow("Min Detection Confidence:", self.detection_confidence_spinbox)
+        self.detection_confidence_spinbox.setValue(
+            self.ml_settings.min_detection_confidence
+        )
+        core_form.addRow("Min detection confidence:", self.detection_confidence_spinbox)
 
         self.tracking_confidence_spinbox = QDoubleSpinBox()
         self.tracking_confidence_spinbox.setRange(0.0, 1.0)
         self.tracking_confidence_spinbox.setSingleStep(0.05)
         self.tracking_confidence_spinbox.setDecimals(2)
-        self.tracking_confidence_spinbox.setValue(ml_settings.min_tracking_confidence)
-        core_form.addRow("Min Tracking Confidence:", self.tracking_confidence_spinbox)
+        self.tracking_confidence_spinbox.setValue(
+            self.ml_settings.min_tracking_confidence
+        )
+        core_form.addRow("Min tracking confidence:", self.tracking_confidence_spinbox)
 
         self.score_buffer_spinbox = QSpinBox()
         self.score_buffer_spinbox.setRange(10, 10000)
-        self.score_buffer_spinbox.setValue(ml_settings.score_buffer_size)
-        core_form.addRow("Score Buffer Size:", self.score_buffer_spinbox)
+        self.score_buffer_spinbox.setValue(self.ml_settings.score_buffer_size)
+        core_form.addRow("Score buffer size:", self.score_buffer_spinbox)
 
         self.score_window_spinbox = QSpinBox()
         self.score_window_spinbox.setRange(1, 100)
-        self.score_window_spinbox.setValue(ml_settings.score_window_size)
-        core_form.addRow("Score Window Size:", self.score_window_spinbox)
+        self.score_window_spinbox.setValue(self.ml_settings.score_window_size)
+        core_form.addRow("Score window size:", self.score_window_spinbox)
 
         self.score_threshold_spinbox = QSpinBox()
         self.score_threshold_spinbox.setRange(0, 100)
-        self.score_threshold_spinbox.setValue(ml_settings.score_threshold)
-        core_form.addRow("Score Threshold:", self.score_threshold_spinbox)
+        self.score_threshold_spinbox.setValue(self.ml_settings.score_threshold)
+        core_form.addRow("Score threshold:", self.score_threshold_spinbox)
 
-        layout.addLayout(core_form)
+        core_group.setLayout(core_form)
 
-        threshold_group = QGroupBox("Posture Thresholds")
-        threshold_layout = QFormLayout()
+        thresholds_group = QGroupBox("Posture thresholds")
+        thresholds_form = QFormLayout()
         self.threshold_spinboxes: Dict[str, QDoubleSpinBox] = {}
-        for key, value in ml_settings.posture_thresholds.items():
+        for key, value in self.ml_settings.posture_thresholds.items():
             spinbox = QDoubleSpinBox()
             spinbox.setDecimals(2)
             spinbox.setRange(0.0, 180.0)
             spinbox.setSingleStep(0.5)
             spinbox.setValue(float(value))
             label = key.replace("_", " ").title()
-            threshold_layout.addRow(f"{label}:", spinbox)
+            thresholds_form.addRow(f"{label}:", spinbox)
             self.threshold_spinboxes[key] = spinbox
-        threshold_group.setLayout(threshold_layout)
-        layout.addWidget(threshold_group)
+        thresholds_group.setLayout(thresholds_form)
 
-        weights_group = QGroupBox("Posture Weights")
-        weights_layout = QFormLayout()
+        weights_group = QGroupBox("Posture weights")
+        weights_form = QFormLayout()
         self.weight_spinboxes: List[QDoubleSpinBox] = []
-        for index, weight in enumerate(ml_settings.posture_weights, start=1):
+        for index, weight in enumerate(self.ml_settings.posture_weights, start=1):
             spinbox = QDoubleSpinBox()
             spinbox.setDecimals(3)
             spinbox.setRange(0.0, 1.0)
             spinbox.setSingleStep(0.05)
             spinbox.setValue(float(weight))
-            weights_layout.addRow(f"Weight {index}:", spinbox)
+            weights_form.addRow(f"Weight {index}:", spinbox)
             self.weight_spinboxes.append(spinbox)
-        weights_group.setLayout(weights_layout)
+        weights_group.setLayout(weights_form)
+
+        layout.addWidget(core_group)
+        layout.addWidget(
+            self._create_help_label(
+                "Adjust these values when experimenting with new models or unusual environments."
+            )
+        )
+        layout.addWidget(thresholds_group)
         layout.addWidget(weights_group)
-
         layout.addStretch(1)
-        self.advanced_tab.setLayout(layout)
+        return container
 
-    def toggle_advanced_tab(self, checked):
-        current_index = self.tabs.indexOf(self.advanced_tab)
-        if checked and current_index == -1:
-            self.tabs.addTab(self.advanced_tab, "Advanced")
-            self.tabs.setCurrentWidget(self.advanced_tab)
-        elif not checked and current_index != -1:
-            self.tabs.removeTab(current_index)
+    def _create_help_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setWordWrap(True)
+        help_font = QFont(label.font())
+        help_font.setPointSize(max(help_font.pointSize() - 1, 8))
+        label.setFont(help_font)
+        label.setStyleSheet("color: #5e6066;")
+        return label
 
-    def populate_tracking_table(self):
-        intervals = get_runtime_settings().tracking_intervals
+    def _create_error_label(self) -> QLabel:
+        label = QLabel("")
+        label.setStyleSheet("color: #c13434;")
+        label.setWordWrap(True)
+        label.setVisible(False)
+        return label
+
+    def _show_error(self, key: str, label: QLabel, message: str) -> None:
+        self.validation_errors[key] = message
+        label.setText(message)
+        label.setVisible(True)
+
+    def _clear_error(self, key: str, label: QLabel) -> None:
+        self.validation_errors.pop(key, None)
+        label.clear()
+        label.setVisible(False)
+
+    def _handle_advanced_toggle(self, checked: bool) -> None:
+        index = self.section_key_to_index.get("advanced")
+        if index is None:
+            return
+        item = self.section_list.item(index)
+        item.setHidden(not checked)
+        if not checked and self.section_list.currentRow() == index:
+            self.section_list.setCurrentRow(0)
+
+    def populate_tracking_table(self) -> None:
+        intervals = self.runtime_settings.tracking_intervals
         self.tracking_table.setRowCount(0)
         for label, minutes in intervals.items():
             row_position = self.tracking_table.rowCount()
@@ -282,25 +480,31 @@ class SettingsInterface(QDialog):
             self.tracking_table.setItem(row_position, 0, QTableWidgetItem(label))
             self.tracking_table.setItem(row_position, 1, QTableWidgetItem(str(minutes)))
 
-    def add_tracking_interval(self):
+    def add_tracking_interval(self) -> None:
         label = self.new_interval_label_edit.text().strip()
         if not label:
-            return  # Optionally, you might show a warning message.
+            self._show_error(
+                "tracking_intervals",
+                self.interval_error_label,
+                "Provide a label before adding an interval.",
+            )
+            return
         minutes = self.new_interval_spinbox.value()
         row_position = self.tracking_table.rowCount()
         self.tracking_table.insertRow(row_position)
         self.tracking_table.setItem(row_position, 0, QTableWidgetItem(label))
         self.tracking_table.setItem(row_position, 1, QTableWidgetItem(str(minutes)))
         self.new_interval_label_edit.clear()
+        self._clear_error("tracking_intervals", self.interval_error_label)
 
-    def remove_tracking_interval(self):
-        selected_rows = set()
-        for item in self.tracking_table.selectedItems():
-            selected_rows.add(item.row())
+    def remove_tracking_interval(self) -> None:
+        selected_rows = {item.row() for item in self.tracking_table.selectedItems()}
         for row in sorted(selected_rows, reverse=True):
             self.tracking_table.removeRow(row)
+        if selected_rows:
+            self._clear_error("tracking_intervals", self.interval_error_label)
 
-    def get_available_cameras(self, max_index=5):
+    def get_available_cameras(self, max_index: int = 5):
         available = []
         for i in range(max_index):
             cap = cv2.VideoCapture(i)
@@ -309,42 +513,97 @@ class SettingsInterface(QDialog):
             cap.release()
         return available
 
-    def accept(self):
-        runtime_updates = {}
+    def _validate_posture_message(self) -> bool:
+        message = self.posture_message_lineedit.text().strip()
+        if not message:
+            self._show_error(
+                "posture_message",
+                self.posture_message_error,
+                "Posture message cannot be empty.",
+            )
+            return False
+        if len(message) < 3:
+            self._show_error(
+                "posture_message",
+                self.posture_message_error,
+                "Use at least three characters for the reminder.",
+            )
+            return False
+        self._clear_error("posture_message", self.posture_message_error)
+        return True
+
+    def _collect_tracking_intervals(self) -> Dict[str, int]:
+        intervals: Dict[str, int] = {}
+        for row in range(self.tracking_table.rowCount()):
+            label_item = self.tracking_table.item(row, 0)
+            minutes_item = self.tracking_table.item(row, 1)
+            label = label_item.text().strip() if label_item else ""
+            if not label:
+                raise ValueError("Each interval needs a label.")
+            try:
+                minutes = int(minutes_item.text()) if minutes_item else 0
+            except (TypeError, ValueError):
+                raise ValueError(f"Minutes for '{label}' must be a whole number.")
+            if minutes < 0:
+                raise ValueError("Minutes cannot be negative.")
+            intervals[label] = minutes
+        if not intervals:
+            raise ValueError("Add at least one tracking interval.")
+        return intervals
+
+    def _validate_tracking_intervals(self) -> Optional[Dict[str, int]]:
+        try:
+            intervals = self._collect_tracking_intervals()
+        except ValueError as error:
+            self._show_error(
+                "tracking_intervals", self.interval_error_label, str(error)
+            )
+            return None
+        self._clear_error("tracking_intervals", self.interval_error_label)
+        return intervals
+
+    def _validate_all(self) -> Optional[Dict[str, int]]:
+        message_valid = self._validate_posture_message()
+        intervals = self._validate_tracking_intervals()
+        if not message_valid or intervals is None:
+            return None
+        return intervals
+
+    def accept(self) -> None:
+        intervals = self._validate_all()
+        if intervals is None:
+            QMessageBox.warning(
+                self,
+                "Settings",
+                "Please resolve the highlighted fields before saving.",
+            )
+            return
+
+        runtime_updates: Dict[str, object] = {}
 
         cam_id = self.camera_combo.currentData()
         if cam_id is None or cam_id == -1:
-            cam_id = get_runtime_settings().default_camera_id
+            cam_id = self.runtime_settings.default_camera_id
         runtime_updates["default_camera_id"] = cam_id
         runtime_updates["default_fps"] = self.fps_spinbox.value()
         runtime_updates["frame_width"] = self.width_spinbox.value()
         runtime_updates["frame_height"] = self.height_spinbox.value()
 
+        runtime_updates[
+            "notifications_enabled"
+        ] = self.notifications_enabled_checkbox.isChecked()
+        runtime_updates["focus_mode_enabled"] = self.focus_mode_checkbox.isChecked()
         runtime_updates["notification_cooldown"] = self.cooldown_spinbox.value()
         runtime_updates["poor_posture_threshold"] = self.poor_posture_spinbox.value()
         runtime_updates[
             "default_posture_message"
-        ] = self.posture_message_lineedit.text()
+        ] = self.posture_message_lineedit.text().strip()
         runtime_updates[
             "enable_database_logging"
         ] = self.db_logging_checkbox.isChecked()
         runtime_updates[
             "db_write_interval_seconds"
         ] = self.db_write_interval_spinbox.value()
-
-        # Update Tracking Intervals from table
-        intervals = {}
-        row_count = self.tracking_table.rowCount()
-        for row in range(row_count):
-            label_item = self.tracking_table.item(row, 0)
-            minutes_item = self.tracking_table.item(row, 1)
-            if label_item and minutes_item:
-                label = label_item.text().strip()
-                try:
-                    minutes = int(minutes_item.text())
-                except ValueError:
-                    minutes = 0
-                intervals[label] = minutes
         runtime_updates["tracking_intervals"] = intervals
         runtime_updates[
             "tracking_duration_minutes"

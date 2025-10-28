@@ -1,4 +1,5 @@
-from typing import Any, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
 
 import cv2
 import mediapipe as mp
@@ -9,6 +10,16 @@ from util__settings import (
     get_ml_settings,
     get_runtime_settings,
 )
+
+
+@dataclass
+class PoseDetectionResult:
+    results: Any
+    metrics: Dict[str, float]
+
+    @property
+    def pose_landmarks(self) -> Any:
+        return getattr(self.results, "pose_landmarks", None)
 
 
 class PoseDetector:
@@ -72,9 +83,14 @@ class PoseDetector:
             results = self._detect_pose(frame)
             if results.pose_landmarks:
                 self._draw_landmarks(frame, results)
-                posture_score = self._calculate_posture_score(results.pose_landmarks)
+                metrics = self._compute_posture_metrics(results.pose_landmarks)
+                posture_score = metrics["posture_score"]
                 self._draw_posture_feedback(frame, posture_score)
-                return frame, posture_score, results
+                return (
+                    frame,
+                    posture_score,
+                    PoseDetectionResult(results=results, metrics=metrics),
+                )
             return frame, 0.0, None
         except Exception as e:
             print(f"Error processing frame: {e}")
@@ -190,16 +206,12 @@ class PoseDetector:
         dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
         return float(np.degrees(np.arccos(dot_product)))
 
-    def _calculate_posture_score(self, landmarks: Any) -> float:
-        """
-        Calculate the posture score based on pose landmarks.
+    def calculate_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
+        """Public helper to expose posture metrics for calibration and analytics."""
+        return self._compute_posture_metrics(landmarks)
 
-        Args:
-            landmarks (Any): Pose landmarks from MediaPipe.
-
-        Returns:
-            float: Posture score between 0 and 100.
-        """
+    def _compute_posture_metrics(self, landmarks: Any) -> Dict[str, float]:
+        """Calculate posture score and supporting metrics from pose landmarks."""
         points = np.array([[lm.x, lm.y, lm.z] for lm in landmarks.landmark])
         nose = points[self.mp_pose.PoseLandmark.NOSE]
         ears = points[
@@ -271,7 +283,20 @@ class PoseDetector:
                 head_side_tilt_score,
             ]
         )
-        return float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
+        posture_score = float(np.clip(np.dot(scores, self.weights) * 100, 0, 100))
+        return {
+            "posture_score": posture_score,
+            "neck_angle": float(neck_angle),
+            "shoulder_vertical_delta": float(abs(shoulder_diff[1])),
+            "spine_angle": float(spine_angle),
+            "head_tilt_score": float(head_tilt_score),
+            "neck_vertical_score": float(neck_vertical_score),
+            "spine_alignment_score": float(spine_alignment_score),
+        }
+
+    def _calculate_posture_score(self, landmarks: Any) -> float:
+        """Backwards compatible alias for legacy callers and tests."""
+        return self._compute_posture_metrics(landmarks)["posture_score"]
 
     def _draw_posture_feedback(self, frame: np.ndarray, score: float) -> None:
         """

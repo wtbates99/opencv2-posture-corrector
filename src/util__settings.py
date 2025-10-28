@@ -21,7 +21,7 @@ from PyQt6.QtCore import QSettings
 # Path where legacy user settings were stored. Retained for migration only.
 USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
-SETTINGS_SCHEMA_VERSION = "1.0.0"
+SETTINGS_SCHEMA_VERSION = "1.1.0"
 SETTINGS_ORGANIZATION = "PostureCorrector"
 SETTINGS_APPLICATION = "PostureApp"
 ENV_PREFIX = "POSTURE"
@@ -93,6 +93,8 @@ class RuntimeSettings:
     tracking_duration_minutes: int = 1
     enable_database_logging: bool = False
     db_write_interval_seconds: int = 900
+    notifications_enabled: bool = True
+    focus_mode_enabled: bool = False
 
 
 @dataclass
@@ -107,6 +109,16 @@ class MLTuningSettings:
     score_buffer_size: int = 1000
     score_window_size: int = 5
     score_threshold: int = 65
+
+
+@dataclass
+class UserProfileSettings:
+    has_completed_onboarding: bool = False
+    baseline_posture_score: float = 75.0
+    baseline_neck_angle: float = 10.0
+    baseline_shoulder_level: float = 2.0
+    preferred_theme: str = "system"
+    language_code: str = "en_US"
 
 
 POSTURE_LANDMARKS = [
@@ -212,11 +224,13 @@ class SettingsStore:
         self.resources = ResourceSettings()
         self.runtime = RuntimeSettings()
         self.ml = MLTuningSettings()
+        self.profile = UserProfileSettings()
         self._settings = QSettings(SETTINGS_ORGANIZATION, SETTINGS_APPLICATION)
         self._ensure_schema_version()
         self._maybe_migrate_legacy_json()
         self._load_group("runtime", self.runtime)
         self._load_group("ml", self.ml)
+        self._load_group("profile", self.profile)
         self._apply_env_overrides()
 
     def _ensure_schema_version(self) -> None:
@@ -252,6 +266,7 @@ class SettingsStore:
         overrides = {
             "runtime": self.runtime,
             "ml": self.ml,
+            "profile": self.profile,
         }
         for section_name, section_obj in overrides.items():
             for field_info in fields(section_obj):
@@ -293,6 +308,9 @@ class SettingsStore:
     def save_ml(self) -> None:
         self._save_group("ml", self.ml)
 
+    def save_profile(self) -> None:
+        self._save_group("profile", self.profile)
+
     def _set_field(
         self, section_name: str, field_name: str, value: Any, persist: bool = True
     ) -> None:
@@ -312,6 +330,8 @@ class SettingsStore:
                     self.save_runtime()
                 elif section_name == "ml":
                     self.save_ml()
+                elif section_name == "profile":
+                    self.save_profile()
             return
 
         raise KeyError(f"Unknown field {field_name} in section {section_name}")
@@ -337,6 +357,11 @@ class SettingsStore:
             self._set_field("ml", field_name, value, persist=False)
         self.save_ml()
 
+    def update_profile(self, **overrides: Any) -> None:
+        for field_name, value in overrides.items():
+            self._set_field("profile", field_name, value, persist=False)
+        self.save_profile()
+
 
 KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
     "ICON_PATH": ("resources", "icon_path"),
@@ -360,6 +385,14 @@ KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
     "TRACKING_DURATION_MINUTES": ("runtime", "tracking_duration_minutes"),
     "ENABLE_DATABASE_LOGGING": ("runtime", "enable_database_logging"),
     "DB_WRITE_INTERVAL_SECONDS": ("runtime", "db_write_interval_seconds"),
+    "NOTIFICATIONS_ENABLED": ("runtime", "notifications_enabled"),
+    "FOCUS_MODE_ENABLED": ("runtime", "focus_mode_enabled"),
+    "HAS_COMPLETED_ONBOARDING": ("profile", "has_completed_onboarding"),
+    "BASELINE_POSTURE_SCORE": ("profile", "baseline_posture_score"),
+    "BASELINE_NECK_ANGLE": ("profile", "baseline_neck_angle"),
+    "BASELINE_SHOULDER_LEVEL": ("profile", "baseline_shoulder_level"),
+    "PREFERRED_THEME": ("profile", "preferred_theme"),
+    "LANGUAGE_CODE": ("profile", "language_code"),
 }
 
 
@@ -378,6 +411,10 @@ def get_ml_settings() -> MLTuningSettings:
     return settings_store.ml
 
 
+def get_profile_settings() -> UserProfileSettings:
+    return settings_store.profile
+
+
 def get_setting(key: str) -> Any:
     if key not in KEY_TO_SECTION_FIELD:
         raise KeyError(f"Unknown setting: {key}")
@@ -393,6 +430,7 @@ def update_setting(key: str, value: Any) -> None:
 def save_user_settings() -> None:
     settings_store.save_runtime()
     settings_store.save_ml()
+    settings_store.save_profile()
 
 
 def update_runtime_settings(**overrides: Any) -> None:
@@ -401,3 +439,7 @@ def update_runtime_settings(**overrides: Any) -> None:
 
 def update_ml_settings(**overrides: Any) -> None:
     settings_store.update_ml(**overrides)
+
+
+def update_profile_settings(**overrides: Any) -> None:
+    settings_store.update_profile(**overrides)

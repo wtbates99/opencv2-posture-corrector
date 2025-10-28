@@ -12,13 +12,23 @@ class Notifications:
     def set_interval_message(self, message):
         """Set and immediately send a one-time interval change notification"""
         self.interval_message = message
-        if message:
+        runtime_settings = get_runtime_settings()
+        if (
+            message
+            and runtime_settings.notifications_enabled
+            and not runtime_settings.focus_mode_enabled
+        ):
             send_notification(message, "Tracking Interval Changed", self.icon_path)
 
     def check_and_notify(self, posture_score):
         current_time = time.time()
         # only apply cooldown to posture notifications
         runtime_settings = get_runtime_settings()
+        if (
+            not runtime_settings.notifications_enabled
+            or runtime_settings.focus_mode_enabled
+        ):
+            return
         if posture_score < runtime_settings.poor_posture_threshold:
             if (
                 current_time - self.last_notification_time
