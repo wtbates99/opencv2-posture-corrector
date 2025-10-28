@@ -20,13 +20,8 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 
-from pose_detector import PoseDetector
-from util__settings import (
-    get_profile_settings,
-    get_runtime_settings,
-    save_user_settings,
-    update_profile_settings,
-)
+from ml.pose_detector import PoseDetector
+from services.settings_service import SettingsService
 
 
 @dataclass
@@ -49,10 +44,13 @@ class CameraPreviewWidget(QLabel):
     def start(self, camera_id: int) -> None:
         self.stop()
         self._camera_id = camera_id
-        self._capture = cv2.VideoCapture(self._camera_id)
-        if not self._capture.isOpened():
+        capture = cv2.VideoCapture(self._camera_id)
+        if not capture.isOpened() and sys.platform == "darwin":
+            capture = cv2.VideoCapture(self._camera_id, cv2.CAP_AVFOUNDATION)
+        if not capture or not capture.isOpened():
             self.setText(self.tr("Unable to open camera"))
             return
+        self._capture = capture
         self._timer.start(40)
 
     def stop(self) -> None:
@@ -98,26 +96,28 @@ class CalibrationWorker(QObject):
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, camera_id: int, duration_seconds: int = 6) -> None:
+    def __init__(self, settings: SettingsService, duration_seconds: int = 6) -> None:
         super().__init__()
-        self.camera_id = camera_id
-        self.duration_seconds = duration_seconds
+        self._settings = settings
+        self._duration = duration_seconds
         self._stop = False
 
     def cancel(self) -> None:
         self._stop = True
 
+    @property
+    def duration(self) -> int:
+        return self._duration
+
     @pyqtSlot()
     def run(self) -> None:
         capture = None
         try:
-            if sys.platform == "darwin":
-                capture = cv2.VideoCapture(self.camera_id, cv2.CAP_AVFOUNDATION)
-                if not capture.isOpened():
-                    capture.release()
-                    capture = cv2.VideoCapture(self.camera_id)
-            else:
-                capture = cv2.VideoCapture(self.camera_id)
+            camera_id = self._settings.runtime.default_camera_id
+            capture = cv2.VideoCapture(camera_id)
+            if not capture.isOpened() and sys.platform == "darwin":
+                capture.release()
+                capture = cv2.VideoCapture(camera_id, cv2.CAP_AVFOUNDATION)
 
             if not capture or not capture.isOpened():
                 self.failed.emit(
@@ -127,7 +127,7 @@ class CalibrationWorker(QObject):
                 )
                 return
 
-            detector = PoseDetector()
+            detector = PoseDetector(self._settings)
             start_time = time.time()
             collected: Dict[str, list] = {
                 "posture_score": [],
@@ -135,7 +135,7 @@ class CalibrationWorker(QObject):
                 "shoulder_delta": [],
             }
 
-            while not self._stop and time.time() - start_time < self.duration_seconds:
+            while not self._stop and time.time() - start_time < self._duration:
                 ret, frame = capture.read()
                 if not ret:
                     time.sleep(0.05)
@@ -154,7 +154,7 @@ class CalibrationWorker(QObject):
                 )
                 time.sleep(0.05)
 
-        except Exception as exc:  # noqa: BLE001 - surface worker issues to UI
+        except Exception as exc:  # noqa: BLE001 - propagate error to UI
             self.failed.emit(str(exc))
             return
         finally:
@@ -224,14 +224,16 @@ class WelcomePage(QWizardPage):
 
 
 class CameraSetupPage(QWizardPage):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self, settings: SettingsService, parent: Optional[QWidget] = None
+    ) -> None:
         super().__init__(parent)
+        self._settings = settings
         self.setTitle(self.tr("Align your camera"))
         self.setSubTitle(
             self.tr("Center yourself and ensure your upper body is in frame.")
         )
 
-        runtime = get_runtime_settings()
         self.preview = CameraPreviewWidget()
         self.preview.setMinimumHeight(240)
 
@@ -249,18 +251,19 @@ class CameraSetupPage(QWizardPage):
         layout.addStretch(1)
         self.setLayout(layout)
 
-        self._camera_id = runtime.default_camera_id
-
     def initializePage(self) -> None:  # noqa: N802 - Qt override
-        self.preview.start(self._camera_id)
+        self.preview.start(self._settings.runtime.default_camera_id)
 
     def cleanupPage(self) -> None:  # noqa: N802 - Qt override
         self.preview.stop()
 
 
 class CalibrationPage(QWizardPage):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self, settings: SettingsService, parent: Optional[QWidget] = None
+    ) -> None:
         super().__init__(parent)
+        self._settings = settings
         self.setTitle(self.tr("Capture your baseline"))
         self.setSubTitle(
             self.tr(
@@ -303,8 +306,7 @@ class CalibrationPage(QWizardPage):
             self.tr("Collecting data... Keep still for six seconds.")
         )
 
-        runtime = get_runtime_settings()
-        worker = CalibrationWorker(runtime.default_camera_id)
+        worker = CalibrationWorker(self._settings)
         thread = QThread(self)
         worker.moveToThread(thread)
 
@@ -324,7 +326,7 @@ class CalibrationPage(QWizardPage):
             self._timeout = QTimer(self)
             self._timeout.setSingleShot(True)
             self._timeout.timeout.connect(self._handle_timeout)
-        self._timeout.start((worker.duration_seconds + 2) * 1000)
+        self._timeout.start((worker.duration + 2) * 1000)
 
     def _handle_success(self, result: CalibrationResult) -> None:
         self._metrics = result
@@ -351,7 +353,7 @@ class CalibrationPage(QWizardPage):
         self._cleanup_worker()
 
     def _handle_timeout(self) -> None:
-        if self._thread and self._thread.isRunning() and self._worker:
+        if self._worker:
             self._worker.cancel()
         else:
             self._cleanup_worker()
@@ -373,16 +375,19 @@ class CalibrationPage(QWizardPage):
 
 
 class OnboardingWizard(QWizard):
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self, settings_service: SettingsService, parent: Optional[QWidget] = None
+    ) -> None:
         super().__init__(parent)
+        self._settings = settings_service
         self.setWindowTitle(self.tr("Posture Coach Setup"))
         self.setOption(QWizard.WizardOption.IndependentPages, False)
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setMinimumWidth(500)
 
         self.welcome_page = WelcomePage()
-        self.camera_page = CameraSetupPage()
-        self.calibration_page = CalibrationPage()
+        self.camera_page = CameraSetupPage(settings_service)
+        self.calibration_page = CalibrationPage(settings_service)
 
         self.addPage(self.welcome_page)
         self.addPage(self.camera_page)
@@ -393,13 +398,13 @@ class OnboardingWizard(QWizard):
     def accept(self) -> None:
         metrics = self.calibration_page.metrics()
         if metrics:
-            update_profile_settings(
+            self._settings.update_profile(
                 has_completed_onboarding=True,
                 baseline_posture_score=metrics.posture_score,
                 baseline_neck_angle=metrics.neck_angle,
                 baseline_shoulder_level=metrics.shoulder_delta,
             )
-            save_user_settings()
+            self._settings.save_all()
             self._metrics = metrics
         super().accept()
 
@@ -407,9 +412,10 @@ class OnboardingWizard(QWizard):
         return self._metrics
 
 
-def run_onboarding_if_needed(parent: Optional[QWidget] = None) -> bool:
-    profile = get_profile_settings()
-    if profile.has_completed_onboarding:
+def run_onboarding_if_needed(
+    settings_service: SettingsService, parent: Optional[QWidget] = None
+) -> bool:
+    if settings_service.profile.has_completed_onboarding:
         return False
-    wizard = OnboardingWizard(parent)
+    wizard = OnboardingWizard(settings_service, parent)
     return wizard.exec() == QDialog.DialogCode.Accepted

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, List, Optional
 
 import cv2
@@ -28,17 +30,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from util__settings import (
-    get_ml_settings,
-    get_profile_settings,
-    get_runtime_settings,
-    save_user_settings,
-    update_ml_settings,
-    update_runtime_settings,
-)
+from services.settings_service import SettingsService
 
 
-class SettingsInterface(QDialog):
+class SettingsDialog(QDialog):
     SECTION_DEFS = [
         ("camera", "Camera & Video", QStyle.StandardPixmap.SP_ComputerIcon),
         (
@@ -50,11 +45,14 @@ class SettingsInterface(QDialog):
         ("advanced", "Advanced", QStyle.StandardPixmap.SP_FileDialogDetailedView),
     ]
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self, settings_service: SettingsService, parent: Optional[QWidget] = None
+    ) -> None:
         super().__init__(parent)
-        self.runtime_settings = get_runtime_settings()
-        self.ml_settings = get_ml_settings()
-        self.profile_settings = get_profile_settings()
+        self._settings = settings_service
+        self.runtime_settings = settings_service.runtime
+        self.ml_settings = settings_service.ml
+        self.profile_settings = settings_service.profile
         self.validation_errors: Dict[str, str] = {}
 
         self.setWindowTitle("Posture Settings")
@@ -65,11 +63,9 @@ class SettingsInterface(QDialog):
         self.section_stack = QStackedWidget()
         self.section_key_to_index: Dict[str, int] = {}
 
-        self.section_widgets: Dict[str, QWidget] = {}
         for index, (key, _, _) in enumerate(self.SECTION_DEFS):
             page = self._build_section_widget(key)
             self.section_stack.addWidget(page)
-            self.section_widgets[key] = page
             self.section_key_to_index[key] = index
 
         self.section_list.currentRowChanged.connect(self.section_stack.setCurrentIndex)
@@ -91,7 +87,6 @@ class SettingsInterface(QDialog):
         main_layout.addWidget(self.button_box)
         self.setLayout(main_layout)
 
-        # Hide advanced controls until explicitly toggled on the hero card.
         self._handle_advanced_toggle(self.show_advanced_checkbox.isChecked())
 
     def _build_hero_card(self) -> QFrame:
@@ -109,12 +104,7 @@ class SettingsInterface(QDialog):
         subtitle = QLabel("Tune camera, alerts, and tracking in one place.")
         subtitle.setStyleSheet("color: #50535a;")
 
-        summary_text = (
-            f"Baseline posture score: {self.profile_settings.baseline_posture_score:.1f}%\n"
-            f"Calibration status: {'Complete' if self.profile_settings.has_completed_onboarding else 'Pending'}\n"
-            f"Notifications: {'On' if self.runtime_settings.notifications_enabled else 'Off'}"
-        )
-        summary = QLabel(summary_text)
+        summary = QLabel(self._summary_text())
         summary.setObjectName("heroSummary")
         summary.setWordWrap(True)
 
@@ -142,7 +132,17 @@ class SettingsInterface(QDialog):
             }
             """
         )
+        self.hero_summary_label = summary
         return card
+
+    def _summary_text(self) -> str:
+        profile = self.profile_settings
+        runtime = self.runtime_settings
+        return (
+            f"Baseline posture score: {profile.baseline_posture_score:.1f}%\n"
+            f"Calibration status: {'Complete' if profile.has_completed_onboarding else 'Pending'}\n"
+            f"Notifications: {'On' if runtime.notifications_enabled else 'Off'}"
+        )
 
     def _build_section_list(self) -> QListWidget:
         widget = QListWidget()
@@ -175,7 +175,7 @@ class SettingsInterface(QDialog):
         capture_group = QGroupBox("Capture")
         capture_form = QFormLayout()
         self.camera_combo = QComboBox()
-        cameras = self.get_available_cameras()
+        cameras = self._available_cameras()
         if cameras:
             for cam_id, cam_name in cameras:
                 self.camera_combo.addItem(cam_name, cam_id)
@@ -204,10 +204,9 @@ class SettingsInterface(QDialog):
         capture_form.addRow("Frame height:", self.height_spinbox)
 
         capture_group.setLayout(capture_form)
-
         layout.addWidget(capture_group)
         layout.addWidget(
-            self._create_help_label(
+            self._help_label(
                 "Choose the camera and resolution you typically use. Higher resolution improves detection at the cost of performance."
             )
         )
@@ -250,7 +249,7 @@ class SettingsInterface(QDialog):
         )
         alerts_form.addRow("Posture message:", self.posture_message_lineedit)
 
-        self.posture_message_error = self._create_error_label()
+        self.posture_message_error = self._error_label()
         alerts_form.addRow("", self.posture_message_error)
 
         alerts_group.setLayout(alerts_form)
@@ -276,13 +275,13 @@ class SettingsInterface(QDialog):
 
         layout.addWidget(alerts_group)
         layout.addWidget(
-            self._create_help_label(
+            self._help_label(
                 "Set thresholds and messaging for posture alerts. Focus mode keeps monitoring active but suppresses notifications."
             )
         )
         layout.addWidget(logging_group)
         layout.addWidget(
-            self._create_help_label(
+            self._help_label(
                 "Enable logging to review history or export data. The interval controls how often entries are written."
             )
         )
@@ -301,10 +300,10 @@ class SettingsInterface(QDialog):
         self.tracking_table.setHorizontalHeaderLabels(["Label", "Minutes"])
         self.tracking_table.horizontalHeader().setStretchLastSection(True)
         self.tracking_table.verticalHeader().setVisible(False)
-        self.populate_tracking_table()
+        self._populate_tracking_table()
         schedule_layout.addWidget(self.tracking_table)
 
-        table_help = self._create_help_label(
+        table_help = self._help_label(
             "Use descriptive labels so tray quick actions stay clear. Minutes can be zero for always-on tracking."
         )
         schedule_layout.addWidget(table_help)
@@ -316,17 +315,17 @@ class SettingsInterface(QDialog):
         self.new_interval_spinbox.setRange(0, 1440)
         self.new_interval_spinbox.setValue(30)
         self.add_interval_button = QPushButton("Add interval")
-        self.add_interval_button.clicked.connect(self.add_tracking_interval)
+        self.add_interval_button.clicked.connect(self._add_tracking_interval)
         controls_layout.addWidget(self.new_interval_label_edit)
         controls_layout.addWidget(self.new_interval_spinbox)
         controls_layout.addWidget(self.add_interval_button)
         schedule_layout.addLayout(controls_layout)
 
         self.remove_interval_button = QPushButton("Remove selected")
-        self.remove_interval_button.clicked.connect(self.remove_tracking_interval)
+        self.remove_interval_button.clicked.connect(self._remove_tracking_interval)
         schedule_layout.addWidget(self.remove_interval_button)
 
-        self.interval_error_label = self._create_error_label()
+        self.interval_error_label = self._error_label()
         schedule_layout.addWidget(self.interval_error_label)
 
         schedule_group.setLayout(schedule_layout)
@@ -344,7 +343,7 @@ class SettingsInterface(QDialog):
         layout.addWidget(schedule_group)
         layout.addLayout(duration_layout)
         layout.addWidget(
-            self._create_help_label(
+            self._help_label(
                 "Intervals define how often tracking restarts. Duration controls how long each session runs when scheduled."
             )
         )
@@ -427,7 +426,7 @@ class SettingsInterface(QDialog):
 
         layout.addWidget(core_group)
         layout.addWidget(
-            self._create_help_label(
+            self._help_label(
                 "Adjust these values when experimenting with new models or unusual environments."
             )
         )
@@ -436,7 +435,7 @@ class SettingsInterface(QDialog):
         layout.addStretch(1)
         return container
 
-    def _create_help_label(self, text: str) -> QLabel:
+    def _help_label(self, text: str) -> QLabel:
         label = QLabel(text)
         label.setWordWrap(True)
         help_font = QFont(label.font())
@@ -445,22 +444,12 @@ class SettingsInterface(QDialog):
         label.setStyleSheet("color: #5e6066;")
         return label
 
-    def _create_error_label(self) -> QLabel:
+    def _error_label(self) -> QLabel:
         label = QLabel("")
         label.setStyleSheet("color: #c13434;")
         label.setWordWrap(True)
         label.setVisible(False)
         return label
-
-    def _show_error(self, key: str, label: QLabel, message: str) -> None:
-        self.validation_errors[key] = message
-        label.setText(message)
-        label.setVisible(True)
-
-    def _clear_error(self, key: str, label: QLabel) -> None:
-        self.validation_errors.pop(key, None)
-        label.clear()
-        label.setVisible(False)
 
     def _handle_advanced_toggle(self, checked: bool) -> None:
         index = self.section_key_to_index.get("advanced")
@@ -471,7 +460,7 @@ class SettingsInterface(QDialog):
         if not checked and self.section_list.currentRow() == index:
             self.section_list.setCurrentRow(0)
 
-    def populate_tracking_table(self) -> None:
+    def _populate_tracking_table(self) -> None:
         intervals = self.runtime_settings.tracking_intervals
         self.tracking_table.setRowCount(0)
         for label, minutes in intervals.items():
@@ -480,7 +469,7 @@ class SettingsInterface(QDialog):
             self.tracking_table.setItem(row_position, 0, QTableWidgetItem(label))
             self.tracking_table.setItem(row_position, 1, QTableWidgetItem(str(minutes)))
 
-    def add_tracking_interval(self) -> None:
+    def _add_tracking_interval(self) -> None:
         label = self.new_interval_label_edit.text().strip()
         if not label:
             self._show_error(
@@ -497,14 +486,14 @@ class SettingsInterface(QDialog):
         self.new_interval_label_edit.clear()
         self._clear_error("tracking_intervals", self.interval_error_label)
 
-    def remove_tracking_interval(self) -> None:
+    def _remove_tracking_interval(self) -> None:
         selected_rows = {item.row() for item in self.tracking_table.selectedItems()}
         for row in sorted(selected_rows, reverse=True):
             self.tracking_table.removeRow(row)
         if selected_rows:
             self._clear_error("tracking_intervals", self.interval_error_label)
 
-    def get_available_cameras(self, max_index: int = 5):
+    def _available_cameras(self, max_index: int = 5):
         available = []
         for i in range(max_index):
             cap = cv2.VideoCapture(i)
@@ -512,6 +501,16 @@ class SettingsInterface(QDialog):
                 available.append((i, f"Camera {i}"))
             cap.release()
         return available
+
+    def _show_error(self, key: str, label: QLabel, message: str) -> None:
+        self.validation_errors[key] = message
+        label.setText(message)
+        label.setVisible(True)
+
+    def _clear_error(self, key: str, label: QLabel) -> None:
+        self.validation_errors.pop(key, None)
+        label.clear()
+        label.setVisible(False)
 
     def _validate_posture_message(self) -> bool:
         message = self.posture_message_lineedit.text().strip()
@@ -573,9 +572,7 @@ class SettingsInterface(QDialog):
         intervals = self._validate_all()
         if intervals is None:
             QMessageBox.warning(
-                self,
-                "Settings",
-                "Please resolve the highlighted fields before saving.",
+                self, "Settings", "Please resolve the highlighted fields before saving."
             )
             return
 
@@ -588,7 +585,6 @@ class SettingsInterface(QDialog):
         runtime_updates["default_fps"] = self.fps_spinbox.value()
         runtime_updates["frame_width"] = self.width_spinbox.value()
         runtime_updates["frame_height"] = self.height_spinbox.value()
-
         runtime_updates[
             "notifications_enabled"
         ] = self.notifications_enabled_checkbox.isChecked()
@@ -623,7 +619,8 @@ class SettingsInterface(QDialog):
             "posture_weights": [spinbox.value() for spinbox in self.weight_spinboxes],
         }
 
-        update_runtime_settings(**runtime_updates)
-        update_ml_settings(**ml_updates)
-        save_user_settings()
+        self._settings.update_runtime(**runtime_updates)
+        self._settings.update_ml(**ml_updates)
+        self._settings.save_all()
+        self.hero_summary_label.setText(self._summary_text())
         super().accept()

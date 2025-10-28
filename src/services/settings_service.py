@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import json
 import os
 import sys
+import tempfile
+import uuid
 from dataclasses import dataclass, field, fields
 from typing import (
     Any,
@@ -9,6 +13,7 @@ from typing import (
     List,
     Mapping,
     MutableMapping,
+    Optional,
     Tuple,
     Type,
     get_args,
@@ -18,29 +23,25 @@ from typing import (
 import mediapipe as mp
 from PyQt6.QtCore import QSettings
 
-# Path where legacy user settings were stored. Retained for migration only.
-USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
 SETTINGS_SCHEMA_VERSION = "1.1.0"
 SETTINGS_ORGANIZATION = "PostureCorrector"
 SETTINGS_APPLICATION = "PostureApp"
 ENV_PREFIX = "POSTURE"
+LEGACY_USER_SETTINGS_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../user_settings.json")
+)
 
 
 class SettingsValidationError(ValueError):
     """Raised when attempting to set an invalid value on the settings store."""
 
 
-# Helper function to get the correct path for bundled resources
 def get_resource_path(relative_path: str) -> str:
-    """Get absolute path to resource, works for dev and for PyInstaller."""
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS  # type: ignore[attr-defined]
     except Exception:
-        # Running in development mode
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
 
@@ -73,7 +74,7 @@ class ResourceSettings:
     )
     default_db_name: str = field(
         default_factory=lambda: os.path.join(
-            os.path.dirname(__file__), "posture_data.db"
+            os.path.dirname(__file__), "../posture_data.db"
         )
     )
 
@@ -220,14 +221,21 @@ def _deserialize_value(expected_type: Type[Any], raw_value: Any, fallback: Any) 
 
 
 class SettingsStore:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        qsettings: Optional[QSettings] = None,
+        migrate_legacy: bool = True,
+    ) -> None:
         self.resources = ResourceSettings()
         self.runtime = RuntimeSettings()
         self.ml = MLTuningSettings()
         self.profile = UserProfileSettings()
-        self._settings = QSettings(SETTINGS_ORGANIZATION, SETTINGS_APPLICATION)
+        self._settings = qsettings or QSettings(
+            SETTINGS_ORGANIZATION, SETTINGS_APPLICATION
+        )
         self._ensure_schema_version()
-        self._maybe_migrate_legacy_json()
+        if migrate_legacy:
+            self._maybe_migrate_legacy_json()
         self._load_group("runtime", self.runtime)
         self._load_group("ml", self.ml)
         self._load_group("profile", self.profile)
@@ -240,15 +248,16 @@ class SettingsStore:
             self._settings.sync()
 
     def _maybe_migrate_legacy_json(self) -> None:
-        if not os.path.exists(USER_SETTINGS_FILE):
+        legacy_file = os.path.abspath(LEGACY_USER_SETTINGS_FILE)
+        if not os.path.exists(legacy_file):
             return
         try:
-            with open(USER_SETTINGS_FILE, "r", encoding="utf-8") as legacy_file:
-                legacy_payload = json.load(legacy_file)
+            with open(legacy_file, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return
 
-        for key, value in legacy_payload.items():
+        for key, value in payload.items():
             if key not in KEY_TO_SECTION_FIELD:
                 continue
             section_name, field_name = KEY_TO_SECTION_FIELD[key]
@@ -256,9 +265,9 @@ class SettingsStore:
 
         self.save_runtime()
         self.save_ml()
-        backup_path = USER_SETTINGS_FILE + ".legacy"
+        self.save_profile()
         try:
-            os.replace(USER_SETTINGS_FILE, backup_path)
+            os.replace(legacy_file, legacy_file + ".legacy")
         except OSError:
             pass
 
@@ -396,50 +405,53 @@ KEY_TO_SECTION_FIELD: Dict[str, Tuple[str, str]] = {
 }
 
 
-settings_store = SettingsStore()
+class SettingsService:
+    """Façade over persistent settings with structured accessors."""
 
+    def __init__(self, store: Optional[SettingsStore] = None) -> None:
+        self._store = store or SettingsStore()
 
-def get_resource_settings() -> ResourceSettings:
-    return settings_store.resources
+    @property
+    def resources(self) -> ResourceSettings:
+        return self._store.resources
 
+    @property
+    def runtime(self) -> RuntimeSettings:
+        return self._store.runtime
 
-def get_runtime_settings() -> RuntimeSettings:
-    return settings_store.runtime
+    @property
+    def ml(self) -> MLTuningSettings:
+        return self._store.ml
 
+    @property
+    def profile(self) -> UserProfileSettings:
+        return self._store.profile
 
-def get_ml_settings() -> MLTuningSettings:
-    return settings_store.ml
+    def update_runtime(self, **overrides: Any) -> None:
+        self._store.update_runtime(**overrides)
 
+    def update_ml(self, **overrides: Any) -> None:
+        self._store.update_ml(**overrides)
 
-def get_profile_settings() -> UserProfileSettings:
-    return settings_store.profile
+    def update_profile(self, **overrides: Any) -> None:
+        self._store.update_profile(**overrides)
 
+    def save_all(self) -> None:
+        self._store.save_runtime()
+        self._store.save_ml()
+        self._store.save_profile()
 
-def get_setting(key: str) -> Any:
-    if key not in KEY_TO_SECTION_FIELD:
-        raise KeyError(f"Unknown setting: {key}")
-    return settings_store.get(key)
+    def get_posture_landmarks(self) -> List[mp.solutions.pose.PoseLandmark]:
+        return POSTURE_LANDMARKS
 
-
-def update_setting(key: str, value: Any) -> None:
-    if key in {"ICON_PATH", "DEFAULT_DB_NAME"}:
-        raise KeyError(f"Cannot modify immutable setting: {key}")
-    settings_store.update(key, value)
-
-
-def save_user_settings() -> None:
-    settings_store.save_runtime()
-    settings_store.save_ml()
-    settings_store.save_profile()
-
-
-def update_runtime_settings(**overrides: Any) -> None:
-    settings_store.update_runtime(**overrides)
-
-
-def update_ml_settings(**overrides: Any) -> None:
-    settings_store.update_ml(**overrides)
-
-
-def update_profile_settings(**overrides: Any) -> None:
-    settings_store.update_profile(**overrides)
+    @classmethod
+    def for_testing(
+        cls, path: Optional[os.PathLike[str] | str] = None
+    ) -> "SettingsService":
+        if path is None:
+            temp_dir = tempfile.gettempdir()
+            path = os.path.join(temp_dir, f"posture_test_{uuid.uuid4().hex}.ini")
+        qsettings = QSettings(str(path), QSettings.Format.IniFormat)
+        qsettings.clear()
+        store = SettingsStore(qsettings=qsettings, migrate_legacy=False)
+        return cls(store)
