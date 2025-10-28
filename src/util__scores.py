@@ -1,18 +1,19 @@
 from time import time
 
 import numpy as np
-from util__settings import get_setting
+from util__settings import get_ml_settings
 
 
 class Scores:
     def __init__(self):
-        self.buffer_size = get_setting("SCORE_BUFFER_SIZE")
+        ml_settings = get_ml_settings()
+        self.buffer_size = ml_settings.score_buffer_size
         self.timestamps = np.zeros(self.buffer_size, dtype=np.float64)
         self.scores = np.zeros(self.buffer_size, dtype=np.float32)
         self.current_index = 0
         self.is_buffer_full = False
-        self.WINDOW_SIZE = get_setting("SCORE_WINDOW_SIZE")
-        self.SCORE_THRESHOLD = get_setting("SCORE_THRESHOLD")
+        self.WINDOW_SIZE = ml_settings.score_window_size
+        self.SCORE_THRESHOLD = ml_settings.score_threshold
 
     def add_score(self, score):
         current_time = time()

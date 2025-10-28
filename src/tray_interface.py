@@ -15,7 +15,7 @@ from notifications import Notifications
 from pose_detector import PoseDetector
 from util__scores import Scores
 from webcam import Webcam
-from util__settings import get_setting
+from util__settings import get_resource_settings, get_runtime_settings
 from settings_interface import SettingsInterface
 from util__create_score_icon import create_score_icon
 import signal
@@ -35,7 +35,8 @@ class PostureTrackerTray(QSystemTrayIcon):
         """Set up the QApplication instance and basic properties."""
         app = QApplication.instance()
         app.setApplicationName("Posture Corrector")
-        self.icon_path = get_setting("ICON_PATH")
+        resource_settings = get_resource_settings()
+        self.icon_path = resource_settings.icon_path
         app.setWindowIcon(QIcon(self.icon_path))
         self.setIcon(QIcon(self.icon_path))
 
@@ -45,8 +46,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.detector = PoseDetector()
         self.scores = Scores()
         self.notifier = Notifications(icon_path=self.icon_path)
-        self.db = Database(get_setting("DEFAULT_DB_NAME"))
-        self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
+        resource_settings = get_resource_settings()
+        runtime_settings = get_runtime_settings()
+        self.db = Database(resource_settings.default_db_name)
+        self.db_enabled = runtime_settings.enable_database_logging
 
         self.tracking_enabled = False
         self.video_window = None
@@ -91,7 +94,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         interval_group = QActionGroup(interval_menu)
         interval_group.setExclusive(True)
 
-        tracking_intervals = get_setting("TRACKING_INTERVALS")
+        tracking_intervals = get_runtime_settings().tracking_intervals
         for label, minutes in tracking_intervals.items():
             action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
@@ -198,7 +201,7 @@ class PostureTrackerTray(QSystemTrayIcon):
     def _save_to_db(self, average_score):
         """Save pose data to the database if conditions are met."""
         current_time = datetime.now()
-        db_interval_seconds = get_setting("DB_WRITE_INTERVAL_SECONDS")
+        db_interval_seconds = get_runtime_settings().db_write_interval_seconds
 
         should_save = (
             self.tracking_interval > 0
@@ -266,7 +269,7 @@ class PostureTrackerTray(QSystemTrayIcon):
         self.last_db_save = None
         if not self.tracking_enabled:
             self.toggle_tracking()
-        tracking_duration_minutes = get_setting("TRACKING_DURATION_MINUTES")
+        tracking_duration_minutes = get_runtime_settings().tracking_duration_minutes
         QTimer.singleShot(
             tracking_duration_minutes * 60 * 1000, self.stop_interval_tracking
         )
@@ -290,7 +293,9 @@ class PostureTrackerTray(QSystemTrayIcon):
             self.toggle_tracking()
 
         self.frame_reader = Webcam()
-        self.db_enabled = get_setting("ENABLE_DATABASE_LOGGING")
+        self.detector = PoseDetector()
+        self.scores = Scores()
+        self.db_enabled = get_runtime_settings().enable_database_logging
         self.last_db_save = None if self.db_enabled else self.last_db_save
 
         menu = self.contextMenu()

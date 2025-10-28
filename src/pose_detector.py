@@ -1,19 +1,23 @@
-from typing import Tuple, Any
+from typing import Any, Tuple
 
 import cv2
 import mediapipe as mp
 import numpy as np
 
-from util__settings import POSTURE_LANDMARKS, get_setting
+from util__settings import (
+    POSTURE_LANDMARKS,
+    get_ml_settings,
+    get_runtime_settings,
+)
 
 
 class PoseDetector:
     def __init__(
         self,
-        min_detection_confidence: float = get_setting("MIN_DETECTION_CONFIDENCE"),
-        min_tracking_confidence: float = get_setting("MIN_TRACKING_CONFIDENCE"),
-        frame_width: int = get_setting("FRAME_WIDTH"),
-        frame_height: int = get_setting("FRAME_HEIGHT"),
+        min_detection_confidence: float | None = None,
+        min_tracking_confidence: float | None = None,
+        frame_width: int | None = None,
+        frame_height: int | None = None,
     ) -> None:
         """
         Initialize the PoseDetector.
@@ -26,6 +30,18 @@ class PoseDetector:
             frame_width (int, optional): Width of the video frame. Defaults to value from settings.
             frame_height (int, optional): Height of the video frame. Defaults to value from settings.
         """
+        runtime_settings = get_runtime_settings()
+        ml_settings = get_ml_settings()
+
+        if min_detection_confidence is None:
+            min_detection_confidence = ml_settings.min_detection_confidence
+        if min_tracking_confidence is None:
+            min_tracking_confidence = ml_settings.min_tracking_confidence
+        if frame_width is None:
+            frame_width = runtime_settings.frame_width
+        if frame_height is None:
+            frame_height = runtime_settings.frame_height
+
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.mp_pose = mp.solutions.pose
@@ -33,13 +49,13 @@ class PoseDetector:
         self.pose = self.mp_pose.Pose(
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
-            model_complexity=get_setting("MODEL_COMPLEXITY"),
+            model_complexity=ml_settings.model_complexity,
         )
         self.posture_landmarks = POSTURE_LANDMARKS
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
-        self.weights = np.array(get_setting("POSTURE_WEIGHTS"))
-        self.score_thresholds = get_setting("POSTURE_THRESHOLDS")
+        self.weights = np.array(ml_settings.posture_weights)
+        self.score_thresholds = dict(ml_settings.posture_thresholds)
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Any]:
         """
