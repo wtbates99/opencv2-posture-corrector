@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
+import json
+from typing import Dict, Iterable, Mapping, Optional
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QActionGroup, QIcon, QStyle
-from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QDialog
+from PyQt6.QtGui import QAction, QActionGroup, QIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QDialog, QStyle
 
 from data.database import Database
 from ml.pose_detector import PoseDetectionResult, PoseDetector
 from services.camera_service import CameraService
 from services.notification_service import NotificationService
 from services.score_service import ScoreService
-from services.settings_service import SettingsService
+from services.settings_service import SettingsService, _default_tracking_intervals
 from services.task_scheduler import TaskScheduler
 from ui.dashboard import PostureDashboard
 from ui.onboarding import run_onboarding_if_needed
@@ -167,7 +168,10 @@ class PostureTrackerTray(QSystemTrayIcon):
         interval_group = QActionGroup(interval_menu)
         interval_group.setExclusive(True)
 
-        for label, minutes in self._settings.runtime.tracking_intervals.items():
+        intervals = self._normalize_tracking_intervals(
+            self._settings.runtime.tracking_intervals
+        )
+        for label, minutes in intervals.items():
             action = QAction(label, interval_menu, checkable=True)
             action.setData(minutes)
             action.triggered.connect(lambda checked, m=minutes: self.set_interval(m))
@@ -176,6 +180,79 @@ class PostureTrackerTray(QSystemTrayIcon):
             if minutes == 0:
                 action.setChecked(True)
         return interval_menu
+
+    def _normalize_tracking_intervals(self, raw_intervals: object) -> Dict[str, int]:
+        normalized = self._coerce_interval_mapping(raw_intervals)
+        if not normalized:
+            normalized = dict(_default_tracking_intervals())
+
+        if normalized != raw_intervals:
+            self._settings.runtime.tracking_intervals = dict(normalized)
+            try:
+                self._settings.save_all()
+            except Exception:
+                pass
+        return normalized
+
+    def _coerce_interval_mapping(self, raw: object) -> Dict[str, int]:
+        if isinstance(raw, Mapping):
+            result: Dict[str, int] = {}
+            for label, value in raw.items():
+                minutes = self._coerce_interval_minutes(value)
+                if minutes is None:
+                    continue
+                result[str(label).strip()] = minutes
+            return result
+
+        if isinstance(raw, str):
+            parsed = self._parse_interval_string(raw)
+            if parsed:
+                return parsed
+            return {}
+
+        if isinstance(raw, Iterable):
+            result: Dict[str, int] = {}
+            for item in raw:
+                if isinstance(item, Mapping):
+                    result.update(self._coerce_interval_mapping(item))
+                    continue
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    label = str(item[0]).strip()
+                    minutes = self._coerce_interval_minutes(item[1])
+                    if minutes is not None:
+                        result[label] = minutes
+            return result
+
+        return {}
+
+    def _parse_interval_string(self, payload: str) -> Dict[str, int]:
+        payload = payload.strip()
+        if not payload:
+            return {}
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            result: Dict[str, int] = {}
+            fragments = [frag for frag in payload.split(",") if frag.strip()]
+            for fragment in fragments:
+                separator = ":" if ":" in fragment else "="
+                if separator not in fragment:
+                    continue
+                label_part, minutes_part = fragment.split(separator, 1)
+                label = label_part.strip().strip("\"'")
+                minutes = self._coerce_interval_minutes(minutes_part)
+                if minutes is not None:
+                    result[label] = minutes
+            return result
+        else:
+            return self._coerce_interval_mapping(decoded)
+
+    def _coerce_interval_minutes(self, value: object) -> Optional[int]:
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            return None
+        return minutes
 
     def _setup_signal_handling(self) -> None:
         import signal

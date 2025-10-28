@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 import sys
 import tempfile
 import uuid
+from pathlib import Path
 from dataclasses import dataclass, field, fields
 from typing import (
     Any,
@@ -38,11 +40,30 @@ class SettingsValidationError(ValueError):
 
 
 def get_resource_path(relative_path: str) -> str:
-    try:
-        base_path = sys._MEIPASS  # type: ignore[attr-defined]
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+    relative = Path(relative_path)
+    candidates = []
+
+    base_path = getattr(sys, "_MEIPASS", None)
+    if base_path:
+        pyinstaller_root = Path(base_path)
+        candidates.append(pyinstaller_root / relative)
+        if relative.parts and relative.parts[0] == "src":
+            candidates.append(pyinstaller_root / Path(*relative.parts[1:]))
+
+    module_path = Path(__file__).resolve()
+    src_root = module_path.parent.parent
+    project_root = src_root.parent
+
+    for root in (project_root, src_root):
+        candidates.append(root / relative)
+        if relative.parts and relative.parts[0] == "src":
+            candidates.append(root / Path(*relative.parts[1:]))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return str(Path.cwd() / relative)
 
 
 def _default_tracking_intervals() -> Dict[str, int]:
@@ -240,6 +261,7 @@ class SettingsStore:
         self._load_group("ml", self.ml)
         self._load_group("profile", self.profile)
         self._apply_env_overrides()
+        self._normalize_loaded_settings()
 
     def _ensure_schema_version(self) -> None:
         stored_version = self._settings.value("metadata/schema_version", type=str)
@@ -289,6 +311,174 @@ class SettingsStore:
                     field_info.type, raw_value, getattr(section_obj, field_info.name)
                 )
                 setattr(section_obj, field_info.name, coerced)
+
+    def _normalize_loaded_settings(self) -> None:
+        runtime_changed = False
+        ml_changed = False
+
+        intervals = self._coerce_tracking_intervals(self.runtime.tracking_intervals)
+        if not intervals:
+            intervals = _default_tracking_intervals()
+        if intervals != self.runtime.tracking_intervals:
+            self.runtime.tracking_intervals = intervals
+            runtime_changed = True
+
+        thresholds = self._coerce_threshold_mapping(self.ml.posture_thresholds)
+        if not thresholds:
+            thresholds = _default_posture_thresholds()
+        if thresholds != self.ml.posture_thresholds:
+            self.ml.posture_thresholds = thresholds
+            ml_changed = True
+
+        weights = self._coerce_weight_list(self.ml.posture_weights)
+        if not weights:
+            weights = _default_posture_weights()
+        if weights != self.ml.posture_weights:
+            self.ml.posture_weights = weights
+            ml_changed = True
+
+        if runtime_changed:
+            self.save_runtime()
+        if ml_changed:
+            self.save_ml()
+
+    @staticmethod
+    def _coerce_tracking_intervals(raw: Any) -> Dict[str, int]:
+        if isinstance(raw, Mapping):
+            result: Dict[str, int] = {}
+            for label, value in raw.items():
+                minutes = SettingsStore._coerce_int(value)
+                if minutes is None:
+                    continue
+                result[str(label).strip()] = minutes
+            return result
+
+        if isinstance(raw, str):
+            parsed = SettingsStore._parse_interval_string(raw)
+            if parsed:
+                return parsed
+            return {}
+
+        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
+            result: Dict[str, int] = {}
+            for item in raw:
+                if isinstance(item, Mapping):
+                    result.update(SettingsStore._coerce_tracking_intervals(item))
+                    continue
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    label = str(item[0]).strip()
+                    minutes = SettingsStore._coerce_int(item[1])
+                    if minutes is not None:
+                        result[label] = minutes
+            return result
+
+        return {}
+
+    @staticmethod
+    def _parse_interval_string(payload: str) -> Dict[str, int]:
+        payload = payload.strip()
+        if not payload:
+            return {}
+        try:
+            decoded = json.loads(payload)
+        except json.JSONDecodeError:
+            try:
+                decoded = ast.literal_eval(payload)
+            except (ValueError, SyntaxError):
+                decoded = None
+        if isinstance(decoded, Mapping):
+            return SettingsStore._coerce_tracking_intervals(decoded)
+        if isinstance(decoded, Iterable) and not isinstance(decoded, (str, bytes)):
+            return SettingsStore._coerce_tracking_intervals(list(decoded))
+
+        result: Dict[str, int] = {}
+        fragments = [frag for frag in payload.split(",") if frag.strip()]
+        for fragment in fragments:
+            separator = ":" if ":" in fragment else "="
+            if separator not in fragment:
+                continue
+            label_part, minutes_part = fragment.split(separator, 1)
+            label = label_part.strip().strip("\"'{} ")
+            minutes = SettingsStore._coerce_int(minutes_part)
+            if minutes is not None:
+                result[label] = minutes
+        return result
+
+    @staticmethod
+    def _coerce_int(value: Any) -> Optional[int]:
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _coerce_threshold_mapping(raw: Any) -> Dict[str, float]:
+        if isinstance(raw, Mapping):
+            result: Dict[str, float] = {}
+            for key, value in raw.items():
+                coerced = SettingsStore._coerce_float(value)
+                if coerced is None:
+                    continue
+                result[str(key)] = coerced
+            return result
+
+        if isinstance(raw, str):
+            converted = SettingsStore._loads_flexible(raw)
+            if isinstance(converted, Mapping):
+                return SettingsStore._coerce_threshold_mapping(converted)
+            if isinstance(converted, Iterable):
+                return SettingsStore._coerce_threshold_mapping(converted)
+            return {}
+
+        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
+            result: Dict[str, float] = {}
+            for item in raw:
+                if isinstance(item, Mapping):
+                    result.update(SettingsStore._coerce_threshold_mapping(item))
+                    continue
+                if isinstance(item, (list, tuple)) and len(item) >= 2:
+                    key = str(item[0]).strip()
+                    value = SettingsStore._coerce_float(item[1])
+                    if value is not None:
+                        result[key] = value
+            return result
+
+        return {}
+
+    @staticmethod
+    def _coerce_weight_list(raw: Any) -> List[float]:
+        if isinstance(raw, str):
+            raw = SettingsStore._loads_flexible(raw)
+        if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes)):
+            result: List[float] = []
+            for item in raw:
+                value = SettingsStore._coerce_float(item)
+                if value is not None:
+                    result.append(value)
+            return result
+        if isinstance(raw, (int, float)):
+            return [float(raw)]
+        return []
+
+    @staticmethod
+    def _coerce_float(value: Any) -> Optional[float]:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _loads_flexible(payload: str) -> Any:
+        payload = payload.strip()
+        if not payload:
+            return None
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError:
+            try:
+                return ast.literal_eval(payload)
+            except (ValueError, SyntaxError):
+                return None
 
     def _load_group(self, group_name: str, section_obj: Any) -> None:
         self._settings.beginGroup(group_name)

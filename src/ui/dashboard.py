@@ -5,7 +5,15 @@ from typing import Dict, List, Optional
 
 import cv2
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PyQt6.QtGui import (
+    QColor,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPalette,
+)
 from PyQt6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QDialog, QFrame, QWidget
 
 
@@ -118,7 +126,7 @@ class PostureDashboard(QDialog):
         elif preference == "light":
             is_dark = False
         else:
-            window_color = palette.color(palette.Window)
+            window_color = palette.color(QPalette.ColorRole.Window)
             luminance = (
                 0.299 * window_color.red()
                 + 0.587 * window_color.green()

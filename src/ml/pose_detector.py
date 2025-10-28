@@ -39,7 +39,7 @@ class PoseDetector:
         self.posture_landmarks = settings.get_posture_landmarks()
         self.ideal_neck_vector = np.array([0, -1, 0])
         self.ideal_spine_vector = np.array([0, -1, 0])
-        self.weights = np.array(ml_settings.posture_weights)
+        self.weights = self._normalize_weights(ml_settings.posture_weights)
         self.score_thresholds = self._normalize_thresholds(
             ml_settings.posture_thresholds
         )
@@ -248,17 +248,25 @@ class PoseDetector:
             )
 
     @staticmethod
+    def _normalize_weights(weights: Any) -> np.ndarray:
+        if isinstance(weights, str):
+            try:
+                decoded = json.loads(weights)
+            except json.JSONDecodeError as exc:
+                raise ValueError("Invalid posture weights configuration") from exc
+            weights = decoded
+        if not isinstance(weights, (list, tuple)):
+            raise ValueError("Posture weights must be a list of numbers")
+        coerced = [float(value) for value in weights]
+        return np.array(coerced, dtype=float)
+
+    @staticmethod
     def _normalize_thresholds(thresholds: Any) -> Dict[str, float]:
-        if isinstance(thresholds, dict):
-            return dict(thresholds)
-        if hasattr(thresholds, "items"):
-            return dict(thresholds.items())
         if isinstance(thresholds, str):
             try:
-                parsed = json.loads(thresholds)
+                thresholds = json.loads(thresholds)
             except json.JSONDecodeError as exc:
                 raise ValueError("Invalid posture thresholds configuration") from exc
-            if not isinstance(parsed, dict):
-                raise ValueError("Posture thresholds JSON must decode to dict")
-            return parsed
+        if hasattr(thresholds, "items"):
+            return {str(key): float(value) for key, value in thresholds.items()}
         raise ValueError("Invalid posture thresholds configuration")
